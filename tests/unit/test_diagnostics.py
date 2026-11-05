@@ -171,3 +171,12 @@ def test_arbitrary_exception_message_cannot_leak_token_password_or_full_dsn():
     for sensitive in (token, password, dsn):
         assert sensitive not in serialized
     assert json.loads(serialized)["reason"] == "unexpected_error"
+
+
+def test_catalog_conflict_has_safe_actionable_diagnostic():
+    from cardlegends.infrastructure.catalog import CatalogIdentityConflict
+
+    details = failure_details(CatalogIdentityConflict(SECRET))
+    assert details["reason"] == "catalog_identity_conflict"
+    assert "assets/catalog.json" in details["hint"]
+    assert SECRET not in json.dumps(details)

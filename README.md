@@ -14,27 +14,39 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Один раз после применения миграций, от роли владельца схемы:
+После Alembic бот сам инициализирует стартовый каталог и баннер **до polling**, одной
+транзакцией под PostgreSQL advisory lock. На заполненной БД повторный запуск не пишет
+данные. Пользовательские изменения персонажей, артов, баннера, пула и игровые данные
+сохраняются. Seed не вызывается из Telegram handlers и не скачивает арты.
 
-```sh
-docker compose run --rm migrate python -m cardlegends.cli seed
-```
-
-Команда идемпотентна: повторный seed не создаёт дубликатов, не меняет существующие права на арты и не начисляет валюту. До seed призыв безопасно сообщает о недоступном баннере. Обычный старт не обращается к источникам артов.
-
-Для Dada Cloud: собрать существующий Dockerfile из корня, переменные BOT_TOKEN, DATABASE_URL, LOG_LEVEL=INFO; одна реплика, фоновый процесс, порт 0, без HTTP healthcheck. Сохраняется штатная команда:
+Для Dada Cloud: собрать существующий Dockerfile из корня; BOT_TOKEN, DATABASE_URL,
+LOG_LEVEL=INFO; одна реплика, фоновый процесс, порт 0, без HTTP healthcheck.
+Если одна DB-роль имеет права и на миграции, и на seed, совместима прежняя команда:
 
 ```sh
 sh -c 'alembic upgrade head && exec python -m cardlegends.main'
 ```
 
-Одноразовая инициализация после миграций в том же окружении:
+С ограниченной runtime-ролью выполнить Alembic отдельно под миграционной ролью,
+а бот запускать через `python -m cardlegends.main` (штатный Docker CMD `cardlegends`
+эквивалентен). Alembic читает DATABASE_URL, а не MIGRATION_DATABASE_URL.
+Миграции требуют DDL и доступа к alembic_version; bootstrap требует SELECT/INSERT на
+franchises, characters, banners, banner_pools, но не DDL/UPDATE/DELETE. Эти привилегии
+не следуют автоматически из успешного `alembic upgrade head`.
 
-```sh
-python -m cardlegends.cli seed
-```
+Возможны два режима:
 
-Если DATABASE_URL использует ограниченную роль, миграции и seed выполняются отдельно с DATABASE_URL владельца схемы. Runtime нужны SELECT на каталог/арты/баннеры, SELECT/INSERT на summons, summon_results, currency_transactions, daily_rewards; SELECT/INSERT/UPDATE на players, wallets, owned_cards, render_cache. Локальный scripts/migrate.py выдаёт эти права существующей роли cardlegends_app. Он не предназначен для создания ролей управляемой БД.
+- Автоматический первый запуск: выдать runtime-роли SELECT/INSERT на четыре таблицы
+  каталога. Локальный `scripts/migrate.py` выдаёт их существующей `cardlegends_app`.
+- Строго ограниченная роль: отдельно выполнить `python -m cardlegends.cli seed`
+  под ролью с SELECT/INSERT до старта бота; затем runtime достаточно SELECT на каталог.
+  CLI и startup используют одну блокировку. Повторный CLI также безопасен.
+
+Остальные runtime-права: CONNECT к БД, USAGE схемы, SELECT на image_assets;
+SELECT/INSERT на summons, summon_results, currency_transactions, daily_rewards;
+SELECT/INSERT/UPDATE на players, wallets, owned_cards, render_cache. Управляемые роли
+Dada Cloud настраивает оператор: локальный мигратор не создаёт их и рассчитан на
+имя `cardlegends_app`. [Отчёт и инструкция обновления](docs/catalog-bootstrap.md).
 
 Требуется `postgresql+asyncpg://`. Существующие диагностика, перевод sslmode в ssl, таймауты и безопасные логи сохранены. Автоматически DATABASE_URL, TLS и секреты не меняются. Режим sslmode=disable должен быть отдельно согласован с провайдером. Одноразовая проверка без токена:
 
@@ -42,7 +54,7 @@ python -m cardlegends.cli seed
 python -m cardlegends.infrastructure.db_check
 ```
 
-Для локального Python: `uv sync --frozen --extra dev`; затем Alembic, seed и запуск через `uv run --env-file .env …`. Приложение само .env не читает. При нативном запуске рабочая директория — корень проекта; зависимости должны быть установлены.
+Для локального Python: `uv sync --frozen --extra dev`; затем Alembic и запуск через `uv run --env-file .env …`. Приложение само .env не читает. При нативном запуске рабочая директория — корень проекта; зависимости должны быть установлены.
 
 Не удаляйте postgres_data: `docker compose down` сохраняет данные, `down -v` удаляет volume. Делайте резервную копию управляемой БД перед миграцией. Новая миграция добавляет таблицы и сохраняет players; downgrade удаляет только новые игровые таблицы и их данные и предназначен для тестов/согласованного отката.
 

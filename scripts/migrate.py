@@ -24,7 +24,8 @@ async def grant_runtime_permissions() -> None:
                 "GRANT SELECT, INSERT ON summons, summon_results, "
                 "currency_transactions, daily_rewards "
                 "TO cardlegends_app",
-                "GRANT SELECT ON franchises, characters, image_assets, banners, banner_pools "
+                "GRANT SELECT ON image_assets TO cardlegends_app",
+                "GRANT SELECT, INSERT ON franchises, characters, banners, banner_pools "
                 "TO cardlegends_app",
             ):
                 await connection.execute(text(statement))

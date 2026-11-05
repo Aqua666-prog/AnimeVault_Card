@@ -7,7 +7,7 @@ from pydantic import SecretStr
 from cardlegends import main as entrypoint
 
 
-@pytest.mark.parametrize("failure", [None, "database", "telegram", "polling"])
+@pytest.mark.parametrize("failure", [None, "database", "catalog", "telegram", "polling"])
 async def test_resources_close_on_shutdown_and_startup_failure(monkeypatch, failure):
     settings = SimpleNamespace(
         bot_token=SecretStr("123456:" + "a" * 35),
@@ -23,6 +23,10 @@ async def test_resources_close_on_shutdown_and_startup_failure(monkeypatch, fail
     bot.set_my_commands = AsyncMock()
     dispatcher = MagicMock()
     dispatcher.start_polling = AsyncMock()
+    initialize = AsyncMock()
+    monkeypatch.setattr(entrypoint, "seed", initialize)
+    if failure == "catalog":
+        initialize.side_effect = RuntimeError("catalog")
     if failure == "database":
         connection.execute.side_effect = RuntimeError("database")
     elif failure == "telegram":
@@ -42,6 +46,7 @@ async def test_resources_close_on_shutdown_and_startup_failure(monkeypatch, fail
             error.value.phase
             == {
                 "database": "database_check",
+                "catalog": "catalog_initialization",
                 "telegram": "telegram_commands",
                 "polling": "telegram_polling",
             }[failure]
@@ -50,5 +55,8 @@ async def test_resources_close_on_shutdown_and_startup_failure(monkeypatch, fail
         await entrypoint.run()
         assert dispatcher.start_polling.call_args.kwargs["close_bot_session"] is False
     engine.dispose.assert_awaited_once()
-    if failure != "database":
+    if failure in ("database", "catalog"):
+        dispatcher.start_polling.assert_not_awaited()
+        bot.set_my_commands.assert_not_awaited()
+    if failure not in ("database", "catalog"):
         bot.session.close.assert_awaited_once()

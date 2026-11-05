@@ -18,6 +18,7 @@ from aiogram.exceptions import (
     TelegramUnauthorizedError,
 )
 
+from cardlegends.infrastructure.catalog import CatalogIdentityConflict
 from cardlegends.infrastructure.config import ConfigurationError
 
 # reason -> (техническая причина, следующий шаг); все строки заданы приложением.
@@ -26,9 +27,14 @@ REASONS = {
         "PostgreSQL: таблица или представление отсутствует.",
         "Выполните alembic upgrade head в той же БД перед запуском бота.",
     ),
+    "catalog_identity_conflict": (
+        "Зарезервированные ID/slug стартового каталога заняты другими персонажами.",
+        "Сверьте каталог с assets/catalog.json; данные не изменены, нужен разбор оператора.",
+    ),
     "database_permission_denied": (
         "PostgreSQL: недостаточно прав на объект БД.",
-        "Проверьте права роли: DDL для миграций, SELECT/INSERT/UPDATE players для бота.",
+        "Проверьте DDL для миграций и runtime grants; для первого seed нужны "
+        "SELECT/INSERT на franchises, characters, banners, banner_pools (см. README).",
     ),
     "database_authentication_failed": (
         "PostgreSQL отклонил аутентификацию.",
@@ -206,6 +212,7 @@ def failure_details(error: BaseException) -> dict[str, str | int]:
     if reason == "unexpected_error":
         types = (
             (ConfigurationError, "configuration_invalid"),
+            (CatalogIdentityConflict, "catalog_identity_conflict"),
             (ssl.SSLCertVerificationError, "tls_certificate_verification_failed"),
             (ssl.SSLError, "tls_error"),
             (socket.gaierror, "dns_resolution_failed"),
