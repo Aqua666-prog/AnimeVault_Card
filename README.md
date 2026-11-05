@@ -20,7 +20,7 @@
    cp .env.example .env
    ```
 
-4. Замените BOT_TOKEN, оба пароля и пароли в обоих DSN. Для паролей удобно использовать случайные шестнадцатеричные строки; спецсимволы в DSN должны быть percent-encoded. В Compose хост БД — `db`. DATABASE_URL относится к роли `cardlegends_app`, MIGRATION_DATABASE_URL — к владельцу схемы.
+4. Замените BOT_TOKEN, оба пароля и пароли в обоих DSN. Для паролей удобно использовать случайные шестнадцатеричные строки; спецсимволы в DSN должны быть percent-encoded. В Compose хост БД — `db`. DATABASE_URL относится к роли `cardlegends_app`, MIGRATION_DATABASE_URL — к владельцу схемы. Требуется префикс `postgresql+asyncpg://`. Параметр `sslmode` облачных URL переводится в `ssl` для asyncpg с сохранением режима TLS; одновременно указывать оба параметра нельзя.
 
 Приложение читает настройки только из окружения. `.env` подставляет Docker Compose либо `uv run --env-file .env`; файл не входит в Git или образ. Миграциям токен не нужен. Для одного токена запускайте один polling-процесс; если раньше использовали webhook, предварительно отключите его средствами Telegram Bot API.
 
@@ -126,7 +126,7 @@ docker compose -f compose.test.yml -p cardlegends-stage1-test down
 
 Настройки проходят валидацию; неверная конфигурация завершает запуск с кодом 2 и безопасным сообщением. Ошибка БД, отсутствующая миграция или ошибка первичного подключения к Telegram завершают запуск с кодом 1. При ошибке обработки update пользователь получает безопасный ответ, callback подтверждается.
 
-Логи — JSON в stderr: timestamp, level, logger, event, correlation_id; для ошибки — только имя класса исключения. Correlation ID соответствует update_id. Полные SQL, DSN, токены, пользовательские сообщения и traceback не записываются. Тексты сторонних логов заменяются событием external_log; это намеренно ограничивает детали диагностики.
+Логи — JSON в stderr: timestamp, level, logger, event, correlation_id; для ошибки — error_type, cause_type, безопасные reason/technical_reason/hint, SQLSTATE или errno, если доступны. При запуске также указан phase. Эти сведения включены в event для панелей, показывающих только сообщение. Correlation ID соответствует update_id. Полные SQL, DSN, токены, пользовательские сообщения и traceback не записываются. Тексты сторонних логов заменяются событием external_log; если запись содержит объект исключения, добавляется его безопасная категория. Сырые сообщения исключений не выводятся, неизвестная причина обозначается unexpected_error.
 
 ## Границы и следующие этапы
 
@@ -139,4 +139,4 @@ docker compose -f compose.test.yml -p cardlegends-stage1-test down
 3. Чистый пошаговый боевой движок и PvE; затем PvP и защита конкурентных действий.
 4. Обмены, эксплуатационная надёжность и возможный webhook.
 
-Подробности: [архитектура](docs/architecture.md), [отчёт этапа 1](docs/stage1-report.md).
+Подробности: [архитектура](docs/architecture.md), [отчёт этапа 1](docs/stage1-report.md), [диагностика Dada Cloud](docs/dada-cloud.md).
