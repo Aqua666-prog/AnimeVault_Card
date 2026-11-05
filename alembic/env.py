@@ -1,16 +1,23 @@
 import asyncio
+import logging
 
 from alembic import context
 from cardlegends.infrastructure.config import ConfigurationError, load_database_settings
 from cardlegends.infrastructure.database import create_database
+from cardlegends.infrastructure.diagnostics import log_failure
+from cardlegends.infrastructure.logging import configure_logging
 from cardlegends.infrastructure.models import Base
+
+configure_logging()
+logger = logging.getLogger("cardlegends.migrations")
 
 
 def database_url() -> str:
     try:
         return load_database_settings().database_url.get_secret_value()
     except ConfigurationError as exc:
-        raise SystemExit(str(exc)) from None
+        log_failure(logger, "migration_failed", exc, "migration_configuration")
+        raise SystemExit(2) from None
 
 
 def migrate(connection) -> None:
@@ -40,5 +47,6 @@ if context.is_offline_mode():
 else:
     try:
         asyncio.run(online())
-    except Exception:
-        raise SystemExit("Ошибка миграции: проверьте подключение, права БД и схему.") from None
+    except Exception as exc:
+        log_failure(logger, "migration_failed", exc, "migration_upgrade_or_downgrade")
+        raise SystemExit(1) from None

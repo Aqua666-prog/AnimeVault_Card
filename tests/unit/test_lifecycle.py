@@ -34,8 +34,18 @@ async def test_resources_close_on_shutdown_and_startup_failure(monkeypatch, fail
     monkeypatch.setattr(entrypoint, "Bot", lambda *a, **kw: bot)
     monkeypatch.setattr(entrypoint, "create_dispatcher", lambda _: dispatcher)
     if failure:
-        with pytest.raises(RuntimeError, match=failure):
+        with pytest.raises(entrypoint.StartupFailure) as error:
             await entrypoint.run()
+        assert isinstance(error.value.error, RuntimeError)
+        assert str(error.value.error) == failure
+        assert (
+            error.value.phase
+            == {
+                "database": "database_check",
+                "telegram": "telegram_commands",
+                "polling": "telegram_polling",
+            }[failure]
+        )
     else:
         await entrypoint.run()
         assert dispatcher.start_polling.call_args.kwargs["close_bot_session"] is False
