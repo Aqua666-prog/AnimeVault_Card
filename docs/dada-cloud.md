@@ -86,7 +86,7 @@ DATABASE_URL="$MIGRATION_DATABASE_URL" alembic upgrade head
 ## Конкретные проверки после сборки исправленного образа
 
 1. Подтвердить SHA образа/деплоя, рабочую директорию /app и фактическую команду запуска. Файлы alembic.ini и alembic/ должны присутствовать; Python и Alembic должны использовать одно окружение. Проверить оба потока stdout/stderr: приложение пишет JSON в stderr.
-2. Проверить результат миграции и код выхода. Выполнить alembic current с той же БД: ожидается 0001_players (head). В SQL-клиенте можно проверить SELECT to_regclass('public.players'); затем права роли приложения на эту таблицу. Сам DSN не публиковать.
+2. Проверить результат миграции и код выхода. Выполнить alembic current с той же БД: для 0.2.0 ожидается 54b3f0a493e1 (head). В SQL-клиенте можно проверить SELECT to_regclass('public.players'); затем права роли приложения на эту таблицу. Сам DSN не публиковать.
 3. Скопировать первую полную строку startup_or_polling_failed либо migration_failed с phase/error_type/cause_type/reason/sqlstate/errno. Отдельные JSON-поля не обязательны: безопасные данные есть и внутри event.
 4. При database_* проверить доступность endpoint именно из контейнера приложения, порт, DNS, актуальность пароля, название БД, права и TLS. Готовность сервиса БД не заменяет эту проверку.
 5. При telegram_unauthorized проверить действительность BOT_TOKEN у BotFather. При telegram_network_error или TLS/DNS-ошибке проверить исходящую сеть. При telegram_conflict проверить другие реплики/локальные процессы и getWebhookInfo. Не вставлять токен в публикуемые команды, URL или логи и не присылать ответ с webhook URL.

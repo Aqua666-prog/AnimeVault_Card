@@ -32,7 +32,7 @@ async def test_resources_close_on_shutdown_and_startup_failure(monkeypatch, fail
     monkeypatch.setattr(entrypoint, "load_settings", lambda: settings)
     monkeypatch.setattr(entrypoint, "create_database", lambda _: (engine, MagicMock()))
     monkeypatch.setattr(entrypoint, "Bot", lambda *a, **kw: bot)
-    monkeypatch.setattr(entrypoint, "create_dispatcher", lambda _: dispatcher)
+    monkeypatch.setattr(entrypoint, "create_dispatcher", lambda *args: dispatcher)
     if failure:
         with pytest.raises(entrypoint.StartupFailure) as error:
             await entrypoint.run()

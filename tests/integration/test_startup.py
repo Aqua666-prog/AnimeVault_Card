@@ -74,7 +74,7 @@ async def test_migrations_then_bot_start_with_real_postgres_and_fake_telegram(
     monkeypatch.setenv("BOT_TOKEN", "123456:" + "a" * 35)
     monkeypatch.setenv("LOG_LEVEL", "INFO")
     monkeypatch.setattr(entrypoint, "Bot", lambda *a, **kw: bot)
-    monkeypatch.setattr(entrypoint, "create_dispatcher", lambda _: dispatcher)
+    monkeypatch.setattr(entrypoint, "create_dispatcher", lambda *args: dispatcher)
     await entrypoint.run()
     bot.set_my_commands.assert_awaited_once()
     dispatcher.start_polling.assert_awaited_once()
