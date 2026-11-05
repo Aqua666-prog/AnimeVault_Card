@@ -6,7 +6,15 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.base import BaseSession
 from aiogram.enums import ParseMode
-from aiogram.methods import AnswerCallbackQuery, GetMe, SendMessage
+from aiogram.methods import (
+    AnswerCallbackQuery,
+    EditMessageCaption,
+    EditMessageMedia,
+    EditMessageText,
+    GetMe,
+    SendMessage,
+    SendPhoto,
+)
 from aiogram.types import Chat, Message, User
 
 from cardlegends.application.players import PlayerService
@@ -49,12 +57,14 @@ class RecordingSession(BaseSession):
         self.calls.append(method)
         if isinstance(method, GetMe):
             return User(id=123456, is_bot=True, first_name="CardLegends", username="test_bot")
-        if isinstance(method, SendMessage):
+        if isinstance(
+            method, (SendMessage, EditMessageText, EditMessageCaption, SendPhoto, EditMessageMedia)
+        ):
             return Message(
                 message_id=1,
                 date=datetime.now(UTC),
                 chat=Chat(id=int(method.chat_id), type="private"),
-                text=method.text,
+                text=getattr(method, "text", None),
             )
         if isinstance(method, AnswerCallbackQuery):
             return True

@@ -1,3 +1,5 @@
+> Историческое описание фундамента. Текущая реализация карточек: [v0.2.0](v020-report.md); роль card_templates выполняет characters, экземпляры — owned_cards, валюта — wallets и currency_transactions.
+
 # Архитектура CardLegends
 
 ## Модульный монолит

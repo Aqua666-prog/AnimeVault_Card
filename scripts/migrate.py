@@ -1,4 +1,4 @@
-"""Применить миграции и выдать роли бота права только на таблицу игроков."""
+"""Применить миграции и выдать роли бота минимальные права runtime-роли."""
 
 import asyncio
 import logging
@@ -18,9 +18,16 @@ async def grant_runtime_permissions() -> None:
     engine, _ = create_database(settings.database_url.get_secret_value())
     try:
         async with engine.begin() as connection:
-            await connection.execute(
-                text("GRANT SELECT, INSERT, UPDATE ON TABLE players TO cardlegends_app")
-            )
+            for statement in (
+                "GRANT SELECT, INSERT, UPDATE ON players, wallets, owned_cards, render_cache "
+                "TO cardlegends_app",
+                "GRANT SELECT, INSERT ON summons, summon_results, "
+                "currency_transactions, daily_rewards "
+                "TO cardlegends_app",
+                "GRANT SELECT ON franchises, characters, image_assets, banners, banner_pools "
+                "TO cardlegends_app",
+            ):
+                await connection.execute(text(statement))
     finally:
         await engine.dispose()
 

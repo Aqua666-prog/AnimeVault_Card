@@ -8,6 +8,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
 from sqlalchemy import text
 
+from cardlegends.application.game import GameService
 from cardlegends.application.players import PlayerService
 from cardlegends.bot.app import create_dispatcher
 from cardlegends.infrastructure.config import ConfigurationError, load_settings
@@ -48,7 +49,9 @@ async def run() -> None:
                 default=DefaultBotProperties(parse_mode=ParseMode.HTML),
             )
             stack.push_async_callback(bot.session.close)
-            dispatcher = create_dispatcher(PlayerService(PostgresPlayerRepository(sessions)))
+            dispatcher = create_dispatcher(
+                PlayerService(PostgresPlayerRepository(sessions)), GameService(sessions)
+            )
             phase = "telegram_commands"
             logger.info("startup_phase phase=%s", phase, extra={"phase": phase})
             await bot.set_my_commands(

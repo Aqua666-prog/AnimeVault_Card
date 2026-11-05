@@ -1,0 +1,572 @@
+[
+  {
+    "id": 1,
+    "slug": "artoria",
+    "name_ru": "Артурия Пендрагон",
+    "name_en": "Artoria Pendragon",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "UR",
+    "description": "Артурия Пендрагон — персонаж Fate.",
+    "tags": {
+      "aliases": [
+        "Artoria Pendragon",
+        "Артурия Пендрагон"
+      ],
+      "danbooru": "artoria_pendragon_(fate)",
+      "franchise_tag": "fate_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 2,
+    "slug": "emiya",
+    "name_ru": "Эмия",
+    "name_en": "Emiya",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "SR",
+    "description": "Эмия — персонаж Fate.",
+    "tags": {
+      "aliases": [
+        "Emiya",
+        "Эмия"
+      ],
+      "danbooru": "archer_(fate/stay_night)",
+      "franchise_tag": "fate_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 3,
+    "slug": "gilgamesh",
+    "name_ru": "Гильгамеш",
+    "name_en": "Gilgamesh",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "SSR",
+    "description": "Гильгамеш — персонаж Fate.",
+    "tags": {
+      "aliases": [
+        "Gilgamesh",
+        "Гильгамеш"
+      ],
+      "danbooru": "gilgamesh_(fate)",
+      "franchise_tag": "fate_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 4,
+    "slug": "rin",
+    "name_ru": "Рин Тосака",
+    "name_en": "Rin Tohsaka",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "R",
+    "description": "Рин Тосака — персонаж Fate.",
+    "tags": {
+      "aliases": [
+        "Rin Tohsaka",
+        "Рин Тосака"
+      ],
+      "danbooru": "tohsaka_rin",
+      "franchise_tag": "fate_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 5,
+    "slug": "sakura-matou",
+    "name_ru": "Сакура Мато",
+    "name_en": "Sakura Matou",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "N",
+    "description": "Сакура Мато — персонаж Fate.",
+    "tags": {
+      "aliases": [
+        "Sakura Matou",
+        "Сакура Мато"
+      ],
+      "danbooru": "matou_sakura",
+      "franchise_tag": "fate_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 6,
+    "slug": "ichigo",
+    "name_ru": "Ичиго Куросаки",
+    "name_en": "Ichigo Kurosaki",
+    "franchise_id": "bleach",
+    "franchise": "Bleach",
+    "rarity": "SSR",
+    "description": "Ичиго Куросаки — персонаж Bleach.",
+    "tags": {
+      "aliases": [
+        "Ichigo Kurosaki",
+        "Ичиго Куросаки"
+      ],
+      "danbooru": "kurosaki_ichigo",
+      "franchise_tag": "bleach",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 7,
+    "slug": "rukia",
+    "name_ru": "Рукия Кучики",
+    "name_en": "Rukia Kuchiki",
+    "franchise_id": "bleach",
+    "franchise": "Bleach",
+    "rarity": "R",
+    "description": "Рукия Кучики — персонаж Bleach.",
+    "tags": {
+      "aliases": [
+        "Rukia Kuchiki",
+        "Рукия Кучики"
+      ],
+      "danbooru": "kuchiki_rukia",
+      "franchise_tag": "bleach",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 8,
+    "slug": "byakuya",
+    "name_ru": "Бьякуя Кучики",
+    "name_en": "Byakuya Kuchiki",
+    "franchise_id": "bleach",
+    "franchise": "Bleach",
+    "rarity": "SR",
+    "description": "Бьякуя Кучики — персонаж Bleach.",
+    "tags": {
+      "aliases": [
+        "Byakuya Kuchiki",
+        "Бьякуя Кучики"
+      ],
+      "danbooru": "kuchiki_byakuya",
+      "franchise_tag": "bleach",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 9,
+    "slug": "aizen",
+    "name_ru": "Сосукэ Айдзэн",
+    "name_en": "Sosuke Aizen",
+    "franchise_id": "bleach",
+    "franchise": "Bleach",
+    "rarity": "SSR",
+    "description": "Сосукэ Айдзэн — персонаж Bleach.",
+    "tags": {
+      "aliases": [
+        "Sosuke Aizen",
+        "Сосукэ Айдзэн"
+      ],
+      "danbooru": "aizen_sousuke",
+      "franchise_tag": "bleach",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 10,
+    "slug": "yoruichi",
+    "name_ru": "Ёруити Сихоин",
+    "name_en": "Yoruichi Shihoin",
+    "franchise_id": "bleach",
+    "franchise": "Bleach",
+    "rarity": "SR",
+    "description": "Ёруити Сихоин — персонаж Bleach.",
+    "tags": {
+      "aliases": [
+        "Yoruichi Shihoin",
+        "Ёруити Сихоин"
+      ],
+      "danbooru": "shihouin_yoruichi",
+      "franchise_tag": "bleach",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 11,
+    "slug": "naruto",
+    "name_ru": "Наруто Удзумаки",
+    "name_en": "Naruto Uzumaki",
+    "franchise_id": "naruto",
+    "franchise": "Naruto",
+    "rarity": "SSR",
+    "description": "Наруто Удзумаки — персонаж Naruto.",
+    "tags": {
+      "aliases": [
+        "Naruto Uzumaki",
+        "Наруто Удзумаки"
+      ],
+      "danbooru": "uzumaki_naruto",
+      "franchise_tag": "naruto_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 12,
+    "slug": "sasuke",
+    "name_ru": "Саскэ Утиха",
+    "name_en": "Sasuke Uchiha",
+    "franchise_id": "naruto",
+    "franchise": "Naruto",
+    "rarity": "SR",
+    "description": "Саскэ Утиха — персонаж Naruto.",
+    "tags": {
+      "aliases": [
+        "Sasuke Uchiha",
+        "Саскэ Утиха"
+      ],
+      "danbooru": "uchiha_sasuke",
+      "franchise_tag": "naruto_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 13,
+    "slug": "sakura-haruno",
+    "name_ru": "Сакура Харуно",
+    "name_en": "Sakura Haruno",
+    "franchise_id": "naruto",
+    "franchise": "Naruto",
+    "rarity": "N",
+    "description": "Сакура Харуно — персонаж Naruto.",
+    "tags": {
+      "aliases": [
+        "Sakura Haruno",
+        "Сакура Харуно"
+      ],
+      "danbooru": "haruno_sakura",
+      "franchise_tag": "naruto_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 14,
+    "slug": "itachi",
+    "name_ru": "Итачи Утиха",
+    "name_en": "Itachi Uchiha",
+    "franchise_id": "naruto",
+    "franchise": "Naruto",
+    "rarity": "UR",
+    "description": "Итачи Утиха — персонаж Naruto.",
+    "tags": {
+      "aliases": [
+        "Itachi Uchiha",
+        "Итачи Утиха"
+      ],
+      "danbooru": "uchiha_itachi",
+      "franchise_tag": "naruto_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 15,
+    "slug": "kakashi",
+    "name_ru": "Какаси Хатакэ",
+    "name_en": "Kakashi Hatake",
+    "franchise_id": "naruto",
+    "franchise": "Naruto",
+    "rarity": "R",
+    "description": "Какаси Хатакэ — персонаж Naruto.",
+    "tags": {
+      "aliases": [
+        "Kakashi Hatake",
+        "Какаси Хатакэ"
+      ],
+      "danbooru": "hatake_kakashi",
+      "franchise_tag": "naruto_(series)",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 16,
+    "slug": "subaru",
+    "name_ru": "Субару Нацуки",
+    "name_en": "Subaru Natsuki",
+    "franchise_id": "rezero",
+    "franchise": "Re:Zero",
+    "rarity": "N",
+    "description": "Субару Нацуки — персонаж Re:Zero.",
+    "tags": {
+      "aliases": [
+        "Subaru Natsuki",
+        "Субару Нацуки"
+      ],
+      "danbooru": "natsuki_subaru",
+      "franchise_tag": "re:zero_kara_hajimeru_isekai_seikatsu",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 17,
+    "slug": "emilia",
+    "name_ru": "Эмилия",
+    "name_en": "Emilia",
+    "franchise_id": "rezero",
+    "franchise": "Re:Zero",
+    "rarity": "SSR",
+    "description": "Эмилия — персонаж Re:Zero.",
+    "tags": {
+      "aliases": [
+        "Emilia",
+        "Эмилия"
+      ],
+      "danbooru": "emilia_(re:zero)",
+      "franchise_tag": "re:zero_kara_hajimeru_isekai_seikatsu",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 18,
+    "slug": "rem",
+    "name_ru": "Рем",
+    "name_en": "Rem",
+    "franchise_id": "rezero",
+    "franchise": "Re:Zero",
+    "rarity": "SR",
+    "description": "Рем — персонаж Re:Zero.",
+    "tags": {
+      "aliases": [
+        "Rem",
+        "Рем"
+      ],
+      "danbooru": "rem_(re:zero)",
+      "franchise_tag": "re:zero_kara_hajimeru_isekai_seikatsu",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 19,
+    "slug": "ram",
+    "name_ru": "Рам",
+    "name_en": "Ram",
+    "franchise_id": "rezero",
+    "franchise": "Re:Zero",
+    "rarity": "R",
+    "description": "Рам — персонаж Re:Zero.",
+    "tags": {
+      "aliases": [
+        "Ram",
+        "Рам"
+      ],
+      "danbooru": "ram_(re:zero)",
+      "franchise_tag": "re:zero_kara_hajimeru_isekai_seikatsu",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 20,
+    "slug": "beatrice",
+    "name_ru": "Беатрис",
+    "name_en": "Beatrice",
+    "franchise_id": "rezero",
+    "franchise": "Re:Zero",
+    "rarity": "N",
+    "description": "Беатрис — персонаж Re:Zero.",
+    "tags": {
+      "aliases": [
+        "Beatrice",
+        "Беатрис"
+      ],
+      "danbooru": "beatrice_(re:zero)",
+      "franchise_tag": "re:zero_kara_hajimeru_isekai_seikatsu",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 21,
+    "slug": "denji",
+    "name_ru": "Дэндзи",
+    "name_en": "Denji",
+    "franchise_id": "chainsaw",
+    "franchise": "Chainsaw Man",
+    "rarity": "R",
+    "description": "Дэндзи — персонаж Chainsaw Man.",
+    "tags": {
+      "aliases": [
+        "Denji",
+        "Дэндзи"
+      ],
+      "danbooru": "denji_(chainsaw_man)",
+      "franchise_tag": "chainsaw_man",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 22,
+    "slug": "power",
+    "name_ru": "Пауэр",
+    "name_en": "Power",
+    "franchise_id": "chainsaw",
+    "franchise": "Chainsaw Man",
+    "rarity": "SR",
+    "description": "Пауэр — персонаж Chainsaw Man.",
+    "tags": {
+      "aliases": [
+        "Power",
+        "Пауэр"
+      ],
+      "danbooru": "power_(chainsaw_man)",
+      "franchise_tag": "chainsaw_man",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 23,
+    "slug": "makima",
+    "name_ru": "Макима",
+    "name_en": "Makima",
+    "franchise_id": "chainsaw",
+    "franchise": "Chainsaw Man",
+    "rarity": "UR",
+    "description": "Макима — персонаж Chainsaw Man.",
+    "tags": {
+      "aliases": [
+        "Makima",
+        "Макима"
+      ],
+      "danbooru": "makima_(chainsaw_man)",
+      "franchise_tag": "chainsaw_man",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 24,
+    "slug": "aki",
+    "name_ru": "Аки Хаякава",
+    "name_en": "Aki Hayakawa",
+    "franchise_id": "chainsaw",
+    "franchise": "Chainsaw Man",
+    "rarity": "N",
+    "description": "Аки Хаякава — персонаж Chainsaw Man.",
+    "tags": {
+      "aliases": [
+        "Aki Hayakawa",
+        "Аки Хаякава"
+      ],
+      "danbooru": "hayakawa_aki",
+      "franchise_tag": "chainsaw_man",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 25,
+    "slug": "kobeni",
+    "name_ru": "Кобэни Хигасияма",
+    "name_en": "Kobeni Higashiyama",
+    "franchise_id": "chainsaw",
+    "franchise": "Chainsaw Man",
+    "rarity": "N",
+    "description": "Кобэни Хигасияма — персонаж Chainsaw Man.",
+    "tags": {
+      "aliases": [
+        "Kobeni Higashiyama",
+        "Кобэни Хигасияма"
+      ],
+      "danbooru": "higashiyama_kobeni",
+      "franchise_tag": "chainsaw_man",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 26,
+    "slug": "yuji",
+    "name_ru": "Юдзи Итадори",
+    "name_en": "Yuji Itadori",
+    "franchise_id": "jujutsu",
+    "franchise": "Jujutsu Kaisen",
+    "rarity": "R",
+    "description": "Юдзи Итадори — персонаж Jujutsu Kaisen.",
+    "tags": {
+      "aliases": [
+        "Yuji Itadori",
+        "Юдзи Итадори"
+      ],
+      "danbooru": "itadori_yuuji",
+      "franchise_tag": "jujutsu_kaisen",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 27,
+    "slug": "megumi",
+    "name_ru": "Мэгуми Фусигуро",
+    "name_en": "Megumi Fushiguro",
+    "franchise_id": "jujutsu",
+    "franchise": "Jujutsu Kaisen",
+    "rarity": "N",
+    "description": "Мэгуми Фусигуро — персонаж Jujutsu Kaisen.",
+    "tags": {
+      "aliases": [
+        "Megumi Fushiguro",
+        "Мэгуми Фусигуро"
+      ],
+      "danbooru": "fushiguro_megumi",
+      "franchise_tag": "jujutsu_kaisen",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 28,
+    "slug": "nobara",
+    "name_ru": "Нобара Кугисаки",
+    "name_en": "Nobara Kugisaki",
+    "franchise_id": "jujutsu",
+    "franchise": "Jujutsu Kaisen",
+    "rarity": "R",
+    "description": "Нобара Кугисаки — персонаж Jujutsu Kaisen.",
+    "tags": {
+      "aliases": [
+        "Nobara Kugisaki",
+        "Нобара Кугисаки"
+      ],
+      "danbooru": "kugisaki_nobara",
+      "franchise_tag": "jujutsu_kaisen",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 29,
+    "slug": "gojo",
+    "name_ru": "Сатору Годзё",
+    "name_en": "Satoru Gojo",
+    "franchise_id": "jujutsu",
+    "franchise": "Jujutsu Kaisen",
+    "rarity": "UR",
+    "description": "Сатору Годзё — персонаж Jujutsu Kaisen.",
+    "tags": {
+      "aliases": [
+        "Satoru Gojo",
+        "Сатору Годзё"
+      ],
+      "danbooru": "gojou_satoru",
+      "franchise_tag": "jujutsu_kaisen",
+      "variant": "original"
+    }
+  },
+  {
+    "id": 30,
+    "slug": "geto",
+    "name_ru": "Сугуру Гэто",
+    "name_en": "Suguru Geto",
+    "franchise_id": "jujutsu",
+    "franchise": "Jujutsu Kaisen",
+    "rarity": "SSR",
+    "description": "Сугуру Гэто — персонаж Jujutsu Kaisen.",
+    "tags": {
+      "aliases": [
+        "Suguru Geto",
+        "Сугуру Гэто"
+      ],
+      "danbooru": "getou_suguru",
+      "franchise_tag": "jujutsu_kaisen",
+      "variant": "original"
+    }
+  }
+]

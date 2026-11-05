@@ -47,7 +47,7 @@ async def database(database_url):
         async with engine.begin() as conn:
             version = int(await conn.scalar(text("SHOW server_version_num")))
             assert version >= 160000
-            await conn.execute(text("TRUNCATE players"))
+            await conn.execute(text("TRUNCATE players CASCADE"))
         yield engine, sessions
     finally:
         await engine.dispose()

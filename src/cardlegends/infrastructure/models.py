@@ -20,3 +20,7 @@ class PlayerRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# All model modules register tables in the same metadata for Alembic.
+from cardlegends.infrastructure import game_models as game_models  # noqa: E402
