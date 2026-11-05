@@ -58,6 +58,30 @@ REASONS = {
         "Сеть или узел недоступны.",
         "Проверьте сетевые правила и маршрутизацию хостинга.",
     ),
+    "connection_reset": (
+        "Удалённый узел или посредник сбросил соединение.",
+        "Проверьте endpoint, порт, сетевые правила и логи сервиса/прокси в момент сбоя.",
+    ),
+    "connection_closed": (
+        "Соединение было закрыто или прервано.",
+        "Проверьте доступность endpoint, требования TLS и логи сервиса/прокси.",
+    ),
+    "connection_error": (
+        "Ошибка соединения без более точной структурной причины.",
+        "Проверьте endpoint, DNS, порт, TLS и логи PostgreSQL/прокси; Ready недостаточно.",
+    ),
+    "postgres_tls_upgrade_rejected": (
+        "Драйвер сообщил, что endpoint отклонил PostgreSQL SSLRequest.",
+        "Сверьте endpoint/порт и режим TLS с провайдером; не отключайте TLS наугад.",
+    ),
+    "postgres_ssl_exchange_error": (
+        "До установки TLS получен PostgreSQL ErrorResponse; его поля не подтверждены.",
+        "Проверьте логи PostgreSQL/прокси и TLS-настройки; данные до TLS не считаются доверенными.",
+    ),
+    "tls_handshake_closed": (
+        "Соединение закрылось во время TLS handshake.",
+        "Проверьте требования TLS, endpoint, сертификаты и логи PostgreSQL/прокси.",
+    ),
     "connection_timeout": (
         "Истекло время ожидания подключения или операции.",
         "Проверьте сеть и нагрузку сервиса на указанном этапе.",
@@ -135,12 +159,39 @@ def exception_chain(error: BaseException) -> list[BaseException]:
     return chain
 
 
+def safe_error_origin(chain: list[BaseException]) -> str | None:
+    """Последний известный module:function:line, без путей, исходников и locals."""
+    for error in reversed(chain):
+        origin = None
+        trace = error.__traceback__
+        while trace is not None:
+            module = trace.tb_frame.f_globals.get("__name__", "")
+            function = trace.tb_frame.f_code.co_name
+            allowed = isinstance(module, str) and (
+                module in {"ssl", "socket"}
+                or module.startswith(("asyncpg.", "sqlalchemy.", "asyncio.", "cardlegends."))
+            )
+            if (
+                allowed
+                and re.fullmatch(r"[A-Za-z0-9_.]+", module)
+                and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", function)
+            ):
+                origin = f"{module}:{function}:{trace.tb_lineno}"
+            trace = trace.tb_next
+        if origin is not None:
+            return origin
+    return None
+
+
 def failure_details(error: BaseException) -> dict[str, str | int]:
     chain = exception_chain(error)
     result: dict[str, str | int] = {
         "error_type": type(error).__name__,
         "cause_type": type(chain[-1]).__name__,
     }
+    origin = safe_error_origin(chain)
+    if origin is not None:
+        result["error_origin"] = origin
     reason = "unexpected_error"
     for item in chain:
         code = getattr(item, "sqlstate", None)
@@ -159,6 +210,9 @@ def failure_details(error: BaseException) -> dict[str, str | int]:
             (ssl.SSLError, "tls_error"),
             (socket.gaierror, "dns_resolution_failed"),
             (ConnectionRefusedError, "connection_refused"),
+            (ConnectionResetError, "connection_reset"),
+            (ConnectionAbortedError, "connection_closed"),
+            (BrokenPipeError, "connection_closed"),
             (TimeoutError, "connection_timeout"),
             (TelegramUnauthorizedError, "telegram_unauthorized"),
             (TelegramForbiddenError, "telegram_forbidden"),
@@ -178,16 +232,67 @@ def failure_details(error: BaseException) -> dict[str, str | int]:
             if reason == "unexpected_error" and number in {errno.ENETUNREACH, errno.EHOSTUNREACH}:
                 reason = "network_unreachable"
             break
+    if reason == "unexpected_error":
+        # Только фиксированные сообщения из asyncpg; переменный host:port не выводится.
+        # ErrorResponse до TLS не разбираем: это недоверенные данные (CVE-2024-10977).
+        for item in chain:
+            if (
+                type(item) is not ConnectionError
+                or not item.args
+                or not isinstance(item.args[0], str)
+            ):
+                continue
+            message = item.args[0]
+            if re.fullmatch(r'PostgreSQL server at "[^\r\n]+" rejected SSL upgrade', message):
+                reason = "postgres_tls_upgrade_rejected"
+            elif re.fullmatch(
+                r'PostgreSQL server at "[^\r\n]+": '
+                r"server sent an error response during SSL exchange; "
+                r"check the server logs for details",
+                message,
+            ):
+                reason = "postgres_ssl_exchange_error"
+            elif message == "connection closed during TLS handshake":
+                reason = "tls_handshake_closed"
+            elif message == "unexpected connection_lost() call":
+                reason = "connection_closed"
+            if reason != "unexpected_error":
+                break
+    if reason == "unexpected_error":
+        # Более точные типы/errno всегда имеют приоритет над базовым ConnectionError.
+        numbers = {item.errno for item in chain if isinstance(getattr(item, "errno", None), int)}
+        if (
+            any(isinstance(item, ConnectionResetError) for item in chain)
+            or errno.ECONNRESET in numbers
+        ):
+            reason = "connection_reset"
+        elif any(
+            isinstance(item, (ConnectionAbortedError, BrokenPipeError)) for item in chain
+        ) or numbers.intersection({errno.ECONNABORTED, errno.EPIPE}):
+            reason = "connection_closed"
+        elif errno.ECONNREFUSED in numbers:
+            reason = "connection_refused"
+        elif errno.ETIMEDOUT in numbers:
+            reason = "connection_timeout"
+        elif any(isinstance(item, ConnectionError) for item in chain):
+            reason = "connection_error"
     result["reason"] = reason
     result["technical_reason"], result["hint"] = REASONS[reason]
     return result
 
 
-def log_failure(logger: logging.Logger, event: str, error: BaseException, phase: str) -> None:
+def log_failure(
+    logger: logging.Logger,
+    event: str,
+    error: BaseException,
+    phase: str,
+    *,
+    context: dict[str, str | int] | None = None,
+) -> None:
     details = failure_details(error)
     # Некоторые панели показывают только event, игнорируя остальные JSON-поля.
     # Поэтому безопасные детали также включены в текст события.
-    metadata = {"phase": phase, **details}
+    metadata = {**(context or {}), "phase": phase, **details}
     summary = " ".join(
         f"{key}={value}"
         for key, value in metadata.items()

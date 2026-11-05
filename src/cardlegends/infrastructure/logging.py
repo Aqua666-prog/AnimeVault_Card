@@ -35,12 +35,20 @@ class JsonFormatter(logging.Formatter):
         for key in (
             "error_type",
             "cause_type",
+            "error_origin",
             "phase",
             "reason",
             "technical_reason",
             "hint",
             "sqlstate",
             "errno",
+            "db_host_kind",
+            "db_port",
+            "db_tls_mode",
+            "db_tls_source",
+            "db_connect_timeout_s",
+            "db_command_timeout_s",
+            "elapsed_ms",
         ):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
