@@ -182,6 +182,13 @@ class GameService:
                     stmt = stmt.where(OwnedCard.favorite.is_(True))
             else:
                 stmt = select(Character).where(Character.is_active.is_(True))
+                if fav:
+                    favorites = (
+                        select(OwnedCard.character_id)
+                        .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
+                        .where(PlayerRow.telegram_id == user, OwnedCard.favorite.is_(True))
+                    )
+                    stmt = stmt.where(Character.id.in_(favorites))
             if rarity != "all":
                 stmt = stmt.where(Character.rarity == rarity)
             if franchise != "all":
@@ -189,8 +196,12 @@ class GameService:
             rank = case({r: i for i, r in enumerate(RARITIES)}, value=Character.rarity)
             stmt = (
                 stmt.order_by(rank.desc(), Character.id)
-                if sort == "rarity" or not owned
-                else (stmt.order_by(OwnedCard.created_at.desc(), OwnedCard.id))
+                if sort == "rarity"
+                else (
+                    stmt.order_by(OwnedCard.created_at.desc(), OwnedCard.id)
+                    if owned
+                    else stmt.order_by(Character.created_at.desc(), Character.id.desc())
+                )
             )
             total = await session.scalar(
                 select(func.count()).select_from(stmt.order_by(None).subquery())

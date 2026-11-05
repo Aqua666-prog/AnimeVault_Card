@@ -53,6 +53,11 @@ async def test_ten_guarantee_idempotency_duplicates_and_favorites(game):
     await game.favorite(42, card.id, True)
     rows, total, page = await game.browse(42, owned=True, fav=True)
     assert total == 1 and rows[0][0].id == card.id
+    catalog, count, _ = await game.browse(42, fav=True)
+    assert count == 1 and catalog[0][0].id == card.character_id
+    assert (await game.browse(43, fav=True))[1] == 0
+    catalog, _, _ = await game.browse(42, sort="time")
+    assert catalog[0][0].id == 30
     await PostgresPlayerRepository(game.sessions).upsert(43, "Чужой", None)
     with pytest.raises(GameError):
         await game.favorite(43, card.id, False)
