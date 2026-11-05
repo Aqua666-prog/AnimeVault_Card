@@ -14,15 +14,15 @@ from cardlegends import main as entrypoint
 pytestmark = pytest.mark.integration
 
 
-def run_process(command, url):
+def run_process(command, url, *, bot_token=True):
+    environment = {**os.environ, "DATABASE_URL": url, "LOG_LEVEL": "INFO"}
+    if bot_token:
+        environment["BOT_TOKEN"] = "123456:" + "a" * 35
+    else:
+        environment.pop("BOT_TOKEN", None)
     return subprocess.run(
         [sys.executable, "-m", *command],
-        env={
-            **os.environ,
-            "DATABASE_URL": url,
-            "BOT_TOKEN": "123456:" + "a" * 35,
-            "LOG_LEVEL": "INFO",
-        },
+        env=environment,
         capture_output=True,
         text=True,
         timeout=20,
@@ -81,19 +81,51 @@ async def test_migrations_then_bot_start_with_real_postgres_and_fake_telegram(
     bot.session.close.assert_awaited_once()
 
 
-async def test_alembic_authentication_error_is_diagnostic_and_never_prints_password(
+@pytest.mark.parametrize(
+    "command,phase",
+    [
+        (["alembic", "upgrade", "head"], "migration_connect"),
+        (["cardlegends.infrastructure.db_check"], "database_connect"),
+    ],
+)
+async def test_authentication_error_is_diagnostic_and_never_prints_password(
     database,
     database_url,
+    command,
+    phase,
 ):
     password = "intentionally-wrong-local-test-password"
     url = make_url(database_url).set(password=password).render_as_string(hide_password=False)
-    result = await asyncio.to_thread(run_process, ["alembic", "upgrade", "head"], url)
+    result = await asyncio.to_thread(run_process, command, url, bot_token=False)
     assert result.returncode == 1
     payload = last_error(result)
     assert payload["reason"] == "database_authentication_failed"
     assert payload["sqlstate"] == "28P01"
     assert payload["cause_type"] == "InvalidPasswordError"
-    assert "migration_failed" in payload["event"]
+    assert payload["phase"] == phase
+    assert payload["db_connect_timeout_s"] == payload["db_command_timeout_s"] == 5
+    assert payload["elapsed_ms"] >= 0
     assert password not in result.stderr + result.stdout
     assert url not in result.stderr + result.stdout
     assert "Traceback" not in result.stderr
+
+
+async def test_db_check_needs_no_telegram_token_and_does_not_change_database(
+    database, database_url
+):
+    engine, _ = database
+    async with engine.connect() as connection:
+        count_before = await connection.scalar(text("SELECT count(*) FROM players"))
+        revision_before = await connection.scalar(text("SELECT version_num FROM alembic_version"))
+    result = await asyncio.to_thread(
+        run_process, ["cardlegends.infrastructure.db_check"], database_url, bot_token=False
+    )
+    assert result.returncode == 0
+    assert "database_check_succeeded" in result.stderr
+    assert database_url not in result.stderr
+    async with engine.connect() as connection:
+        assert await connection.scalar(text("SELECT count(*) FROM players")) == count_before
+        assert (
+            await connection.scalar(text("SELECT version_num FROM alembic_version"))
+            == revision_before
+        )

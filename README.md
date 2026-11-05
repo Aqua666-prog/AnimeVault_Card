@@ -139,4 +139,4 @@ docker compose -f compose.test.yml -p cardlegends-stage1-test down
 3. Чистый пошаговый боевой движок и PvE; затем PvP и защита конкурентных действий.
 4. Обмены, эксплуатационная надёжность и возможный webhook.
 
-Подробности: [архитектура](docs/architecture.md), [отчёт этапа 1](docs/stage1-report.md), [диагностика Dada Cloud](docs/dada-cloud.md).
+Подробности: [архитектура](docs/architecture.md), [отчёт этапа 1](docs/stage1-report.md), [диагностика Dada Cloud](docs/dada-cloud.md), [ConnectionError PostgreSQL](docs/postgres-connection-diagnostics.md).
