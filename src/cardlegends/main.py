@@ -11,6 +11,7 @@ from sqlalchemy import text
 from cardlegends.application.game import GameService
 from cardlegends.application.players import PlayerService
 from cardlegends.bot.app import create_dispatcher
+from cardlegends.infrastructure.catalog import seed
 from cardlegends.infrastructure.config import ConfigurationError, load_settings
 from cardlegends.infrastructure.database import create_database
 from cardlegends.infrastructure.diagnostics import log_failure
@@ -42,6 +43,10 @@ async def run() -> None:
             # Ready у провайдера не гарантирует наличие схемы и прав роли приложения.
             async with engine.connect() as connection:
                 await connection.execute(text("SELECT id FROM players LIMIT 0"))
+            phase = "catalog_initialization"
+            logger.info("startup_phase phase=%s", phase, extra={"phase": phase})
+            await seed(sessions)
+            logger.info("catalog_initialized")
             phase = "telegram_client"
             logger.info("startup_phase phase=%s", phase, extra={"phase": phase})
             bot = Bot(

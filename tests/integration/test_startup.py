@@ -69,7 +69,16 @@ async def test_migrations_then_bot_start_with_real_postgres_and_fake_telegram(
     bot.session.close = AsyncMock()
     bot.set_my_commands = AsyncMock()
     dispatcher = MagicMock()
-    dispatcher.start_polling = AsyncMock()
+    engine, _ = database
+
+    async def polling(*args, **kwargs):
+        # Polling must never observe the migrated-but-empty catalog.
+        async with engine.connect() as conn:
+            assert await conn.scalar(text("SELECT count(*) FROM characters")) == 30
+            assert await conn.scalar(text("SELECT count(*) FROM banner_pools")) == 30
+            assert await conn.scalar(text("SELECT count(*) FROM banners WHERE id = 1")) == 1
+
+    dispatcher.start_polling = AsyncMock(side_effect=polling)
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("BOT_TOKEN", "123456:" + "a" * 35)
     monkeypatch.setenv("LOG_LEVEL", "INFO")
@@ -79,6 +88,8 @@ async def test_migrations_then_bot_start_with_real_postgres_and_fake_telegram(
     bot.set_my_commands.assert_awaited_once()
     dispatcher.start_polling.assert_awaited_once()
     bot.session.close.assert_awaited_once()
+    await entrypoint.run()
+    assert dispatcher.start_polling.await_count == 2
 
 
 @pytest.mark.parametrize(
