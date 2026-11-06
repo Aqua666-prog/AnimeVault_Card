@@ -18,12 +18,12 @@ from aiogram.types import (
     Message,
 )
 
+from cardlegends.bot.visuals import render_scene
 from cardlegends.domain.fate import BANNER_ID, BANNER_NAME, CARD_IDS, DROP_RATES
 from cardlegends.domain.game import GameError
 from cardlegends.domain.progression import MAX_LEVEL, MAX_NP, combat_stats, power, upgrade_cost
 from cardlegends.infrastructure.diagnostics import log_failure
 from cardlegends.infrastructure.fate_images import CardImageError, check_card_images, load_card_png
-from cardlegends.bot.visuals import render_scene
 
 logger = logging.getLogger(__name__)
 
