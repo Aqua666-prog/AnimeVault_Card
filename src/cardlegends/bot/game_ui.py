@@ -95,7 +95,6 @@ async def display(event, text, markup=None):
         await event.answer(text, reply_markup=markup)
 
 
-
 def hit_bar(current, maximum, width=12):
     """Mobile-friendly text meter, bounded and safe for zero-HP defeats."""
     maximum = max(1, int(maximum))
@@ -137,6 +136,7 @@ async def display_scene(event, game, kind, text, markup=None, **values):
             event.from_user.id, photo=photo, caption=text, reply_markup=markup
         )
     return await event.answer_photo(photo=photo, caption=text, reply_markup=markup)
+
 
 def card_text(c):
     limited = "UR LIMITED — Assassin × Archer" if c.limited else f"{c.rarity} — {c.card_class}"
