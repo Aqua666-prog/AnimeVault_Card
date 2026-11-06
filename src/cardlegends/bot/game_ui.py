@@ -18,6 +18,7 @@ from aiogram.types import (
     Message,
 )
 
+from cardlegends.bot.visuals import render_scene
 from cardlegends.domain.fate import BANNER_ID, BANNER_NAME, CARD_IDS, DROP_RATES
 from cardlegends.domain.game import GameError
 from cardlegends.domain.progression import MAX_LEVEL, MAX_NP, combat_stats, power, upgrade_cost
@@ -39,18 +40,18 @@ def keyboard(rows):
 def menu():
     return keyboard(
         [
-            [("◈ Профиль", "fc:profile"), ("▣ Моя коллекция", "r2:inv:0:power:all:all")],
-            [("✦ Призыв", "fc:summon"), ("⚔ Мой отряд", "fc:team")],
-            [("♜ Бесконечная башня", "fc:tower"), ("Активности", "r2:activities")],
-            [("Задания", "r2:q:daily:0"), ("Достижения", "r2:q:achievements:0")],
-            [("Награды", "r2:rewards:all:0"), ("Игровая почта", "r2:rewards:mail:0")],
-            [("Помощь", "fc:help"), ("Календарь", "r2:calendar")],
+            [("👤 Профиль", "fc:profile"), ("🃏 Коллекция", "r2:inv:0:power:all:all")],
+            [("✨ Призыв", "fc:summon"), ("⚔️ Отряд", "fc:team")],
+            [("🏰 Башня", "fc:tower"), ("🎮 Активности", "r2:activities")],
+            [("📋 Задания", "r2:q:daily:0"), ("🏆 Достижения", "r2:q:achievements:0")],
+            [("🎁 Награды", "r2:rewards:all:0"), ("✉️ Почта", "r2:rewards:mail:0")],
+            [("❔ Помощь", "fc:help"), ("📅 Календарь", "r2:calendar")],
         ]
     )
 
 
 def back():
-    return [("Главное меню", "fc:home")]
+    return [("🏠 Главное меню", "fc:home")]
 
 
 def coins(value):
@@ -66,8 +67,16 @@ async def display(event, text, markup=None):
     if isinstance(event, CallbackQuery):
         if not isinstance(event.message, Message):
             return
-        # Photo captions have a 1024-char limit; catalog/result text has its own message.
-        if event.message.photo or event.message.document:
+        # Text screens replace illustrated/photo screens, never leave a stale banner.
+        if event.message.photo:
+            try:
+                await event.message.delete()
+            except TelegramAPIError:
+                pass
+            await event.bot.send_message(event.from_user.id, text, reply_markup=markup)
+            return
+        # Documents are kept intact for original image/archival links.
+        if event.message.document:
             if len(text) <= 1024:
                 try:
                     await event.message.edit_caption(caption=text, reply_markup=markup)
@@ -84,6 +93,49 @@ async def display(event, text, markup=None):
                 raise
     else:
         await event.answer(text, reply_markup=markup)
+
+
+def hit_bar(current, maximum, width=12):
+    """Mobile-friendly text meter, bounded and safe for zero-HP defeats."""
+    maximum = max(1, int(maximum))
+    filled = max(0, min(width, (max(0, int(current)) * width + maximum - 1) // maximum))
+    percent = max(0, min(100, int(current) * 100 // maximum))
+    return "▰" * filled + "▱" * (width - filled) + f" {percent}%"
+
+
+async def display_scene(event, game, kind, text, markup=None, **values):
+    """Show an illustrated, state-aware scene; edit existing media whenever possible."""
+    markup = markup or keyboard([back()])
+    if len(text) > 1024:
+        return await display(event, text, markup)
+    try:
+        art = await asyncio.to_thread(render_scene, kind, cards_dir=game.cards_dir, **values)
+    except (OSError, ValueError) as error:
+        log_failure(logger, "scene_render_failed", error, "telegram_visuals")
+        return await display(event, text, markup)
+    photo = BufferedInputFile(art, filename=f"animevault-{kind}.jpg")
+    if isinstance(event, CallbackQuery):
+        if not isinstance(event.message, Message):
+            return
+        if event.message.photo:
+            try:
+                return await event.message.edit_media(
+                    media=InputMediaPhoto(media=photo, caption=text),
+                    reply_markup=markup,
+                )
+            except TelegramBadRequest as error:
+                if "message is not modified" in error.message.lower():
+                    return
+                # Telegram can reject replacing older media; send a fresh screen.
+                log_failure(logger, "scene_media_edit_failed", error, "telegram_visuals")
+        try:
+            await event.message.delete()
+        except TelegramAPIError:
+            pass
+        return await event.bot.send_photo(
+            event.from_user.id, photo=photo, caption=text, reply_markup=markup
+        )
+    return await event.answer_photo(photo=photo, caption=text, reply_markup=markup)
 
 
 def card_text(c):
@@ -274,7 +326,7 @@ def create_game_router(game, players):
     async def team(event):
         members = await game.team(event.from_user.id)
         slots = {slot: (card, character) for slot, card, character in members}
-        text = "<b>Мой отряд — до 3 карточек</b>\n"
+        text = "<b>⚔️ МОЙ ОТРЯД</b> · 3 боевых слота\n━━━━━━━━━━━━━━\n"
         rows = []
         hp = atk = defense = 0
         for slot in range(1, 4):
@@ -285,7 +337,7 @@ def create_game_router(game, players):
                 hp += stats["hp"]
                 atk += stats["atk"]
                 defense += stats["def"]
-                text += f"\n{slot}. {h(character.name_en)} — Ур. {card.level}, NP {card.np}/5"
+                text += f"\n🛡 {slot}. {h(character.name_en)} · Lv.{card.level} · NP {card.np}/5"
                 rows.append(
                     [
                         (f"Изменить слот {slot}", f"fc:ts:{slot}:0"),
@@ -293,14 +345,22 @@ def create_game_router(game, players):
                     ]
                 )
             else:
-                text += f"\n{slot}. Свободный слот"
+                text += f"\n▫️ {slot}. Свободный слот"
                 rows.append([(f"Добавить в слот {slot}", f"fc:ts:{slot}:0")])
-        text += f"\n\nСумма характеристик: HP {hp} • ATK {atk} • DEF {defense}"
-        text += f"\nБоевая мощь: {hp + 5 * atk + 3 * defense}"
+        text += f"\n\n❤️ HP {coins(hp)}   ⚔️ ATK {coins(atk)}   🛡 DEF {coins(defense)}"
+        text += f"\n✨ Боевая мощь: <b>{coins(hp + 5 * atk + 3 * defense)}</b>"
         rows += [[(f"Развить: {c.name_en}", f"fc:card:{card.id.hex}")] for _, card, c in members]
         text += "\nВ бою участвуют только назначенные экземпляры. Они защищены от слияния."
-        rows.append([("В башню", "fc:tower")])
-        await display(event, text, keyboard(rows + [back()]))
+        rows.append([("🏰 В башню", "fc:tower")])
+        await display_scene(
+            event,
+            game,
+            "team",
+            text,
+            keyboard(rows + [back()]),
+            subtitle=f"Боевая мощь: {coins(hp + 5 * atk + 3 * defense)}",
+            metrics=(f"❤️ HP: {coins(hp)}", f"⚔ ATK: {coins(atk)}", f"DEF: {coins(defense)}"),
+        )
 
     async def team_pick(event, slot, page):
         if slot not in (1, 2, 3):
@@ -355,24 +415,34 @@ def create_game_router(game, players):
         )
         if run.first_clear:
             details += "\n◆ Новый этаж открыт. Проверьте достижения и награды."
-        await display(
+        await display_scene(
             event,
-            f"<b>Бесконечная башня · этаж {run.floor}: {title}</b>\n"
-            f"Раундов: {run.turns}\nОставшееся HP отряда: {run.remaining_hp}\n"
-            f"Награда: +{coins(run.coins)} монет, +{coins(run.xp)} EXP\n"
+            game,
+            "victory" if run.victory else "defeat",
+            f"<b>{'🏆' if run.victory else '💀'} БАШНЯ · ЭТАЖ {run.floor} · {title}</b>\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"⚔️ Раундов: {run.turns}\n❤️ HP отряда: {coins(run.remaining_hp)}\n"
+            f"🎁 Награда: +{coins(run.coins)} Coins · +{coins(run.xp)} EXP\n"
             f"Баланс: {coins(balance)} монет, {coins(training_xp)} EXP\n"
             f"Наивысший пройденный этаж: {highest}" + details,
             keyboard(
                 [
-                    [("Продолжить башню", "fc:tower")],
+                    [("🏰 Продолжить башню", "fc:tower")],
                     [
                         ("Повторить этот этаж", f"r2:tower:{run.floor}"),
                         ("Награды", "r2:rewards:all:0"),
                     ],
-                    [("Улучшить отряд", "fc:team")],
+                    [("⚔️ Улучшить отряд", "fc:team")],
                     back(),
                 ]
             ),
+            subtitle=f"Этаж {run.floor} · {title}",
+            metrics=(
+                f"Раундов: {run.turns}",
+                f"+{coins(run.coins)} Coins",
+                f"+{coins(run.xp)} EXP",
+            ),
+            hp=(run.remaining_hp, max(1, run.remaining_hp + int(report.get("received", 0)))),
         )
 
     async def rates(event):
@@ -391,10 +461,13 @@ def create_game_router(game, players):
     async def summon_menu(event):
         banner = await game.banner_info()
         issues = await asyncio.to_thread(check_card_images, game.cards_dir)
-        await display(
+        await display_scene(
             event,
-            f"<b>{h(banner.name)}</b>\n"
-            "Artoria 33% • Morgan 33% • Enkidu 33% • Kama &amp; Ishtar 1%\n"
+            game,
+            "summon",
+            f"<b>✨ {h(banner.name)}</b>\n━━━━━━━━━━━━━━\n"
+            "⚔ Artoria 33% · Morgan 33% · Enkidu 33%\n"
+            "💎 Kama &amp; Ishtar 1%\n"
             "×10: десять независимых розыгрышей, без гарантий и скидки.\n"
             + (
                 "\nИзображения ещё не готовы. Монеты не списываются.\n" + "\n".join(issues)
@@ -403,12 +476,14 @@ def create_game_router(game, players):
             ),
             keyboard(
                 [
-                    [("Призвать ×1 — 100 монет", f"fc:draw:1:{uuid4().hex}")],
-                    [("Призвать ×10 — 1 000 монет", f"fc:draw:10:{uuid4().hex}")],
-                    [("Шансы", "fc:rates"), ("Каталог", "fc:catalog:0")],
+                    [("✨ Призвать ×1 · 100 Coins", f"fc:draw:1:{uuid4().hex}")],
+                    [("🌟 Призвать ×10 · 1 000 Coins", f"fc:draw:10:{uuid4().hex}")],
+                    [("🎲 Шансы", "fc:rates"), ("🃏 Каталог", "fc:catalog:0")],
                     back(),
                 ]
             ),
+            subtitle="FATE COLLECTION · первый баннер",
+            metrics=("SSR: 33% / 33% / 33%", "UR Limited: 1%", "Призыв ×1 или ×10"),
         )
 
     async def collection(event):

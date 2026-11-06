@@ -2,7 +2,7 @@
 
 from html import escape as h
 
-from cardlegends.bot.game_ui import back, coins, display, keyboard, menu
+from cardlegends.bot.game_ui import back, coins, display, display_scene, hit_bar, keyboard, menu
 from cardlegends.domain.activities import ACHIEVEMENTS, progress_bar
 from cardlegends.domain.progression import combat_stats, power
 from cardlegends.domain.tower import battle, enemy_name, enemy_stats
@@ -22,16 +22,30 @@ class RPGScreens:
         )
         skipped, steps = await self.game.tutorial(user)
         text = (
-            f"<b>ANIMEVAULT CARDS</b> · Fate\n━━━━━━━━━━━━━━\n"
-            f"{h(p['player'].display_name)} · ранг {p['level']}\n"
-            f"◈ {coins(p['balance'])} Coins   ✦ {coins(p['training_xp'])} EXP\n"
-            f"Коллекция {p['unique']}/4 · Башня {p['highest']}\n"
+            f"<b>✦ ANIMEVAULT CARDS ✦</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 {h(p['player'].display_name)} · ранг <b>{p['level']}</b>\n"
+            f"🪙 <b>{coins(p['balance'])}</b> Coins    💠 <b>{coins(p['training_xp'])}</b> EXP\n"
+            f"🃏 Коллекция: <b>{p['unique']}/4</b>  ·  🏰 Башня: <b>{p['highest']}</b>\n"
             f"{progress_bar(p['unique'], 4)}\n\n"
-            f"Награды к получению: <b>{ready}</b>\nВыберите следующий шаг приключения."
+            f"🎁 Доступных наград: <b>{ready}</b>\nВыбери, куда отправимся!"
         )
         if not skipped and not all(steps):
             text += f"\nПутеводитель: {sum(steps)}/8 — открыт в помощи."
-        await display(event, text, menu())
+        await display_scene(
+            event,
+            self.game,
+            "home",
+            text,
+            menu(),
+            subtitle=f"Добро пожаловать, {p['player'].display_name[:20]}",
+            metrics=(
+                f"Ранг аккаунта: {p['level']}",
+                f"Coins: {coins(p['balance'])}",
+                f"EXP: {coins(p['training_xp'])}",
+            ),
+            progress=(p["unique"], 4),
+        )
 
     async def profile(self, event):
         p = await self.game.profile_v2(event.from_user.id)
@@ -44,9 +58,11 @@ class RPGScreens:
             if card
             else "Карточек пока нет"
         )
-        await display(
+        await display_scene(
             event,
-            f"<b>ПРОФИЛЬ ИГРОКА</b>\n━━━━━━━━━━━━━━\n"
+            self.game,
+            "profile",
+            f"<b>👑 ПРОФИЛЬ ИГРОКА</b>\n━━━━━━━━━━━━━━\n"
             f"{h(p['player'].display_name)}\nTelegram ID: <code>{event.from_user.id}</code>\n"
             f"Ранг аккаунта {p['level']} · Всего опыта {coins(p['xp'])}\n"
             f"{progress_bar(p['xp'] % 100, 100)} {p['xp'] % 100}/100\n"
@@ -58,7 +74,16 @@ class RPGScreens:
             f"Башня: {p['highest']} · Побед {p['wins']} / Поражений {p['losses']}\n"
             f"Достижения: {p['achievements']}/{len(ACHIEVEMENTS)}\n"
             f"С нами с {p['player'].created_at:%d.%m.%Y} UTC",
-            keyboard([[("Коллекция", "r2:inv:0:power:all:all"), ("Мой отряд", "fc:team")], back()]),
+            keyboard(
+                [[("🃏 Коллекция", "r2:inv:0:power:all:all"), ("⚔️ Мой отряд", "fc:team")], back()]
+            ),
+            subtitle=f"Ранг аккаунта: {p['level']}",
+            metrics=(
+                f"Coins: {coins(p['balance'])}",
+                f"EXP: {coins(p['training_xp'])}",
+                f"Башня: {p['highest']} этаж",
+            ),
+            progress=(p["xp"] % 100, 100),
         )
 
     async def inventory(self, event, page=0, sort="power", filter_="all", value="all"):
@@ -100,9 +125,11 @@ class RPGScreens:
             [("По персонажам", "fc:collection"), ("Призыв", "fc:summon")],
             back(),
         ]
-        await display(
+        await display_scene(
             event,
-            f"<b>МОЯ КОЛЛЕКЦИЯ</b>\n━━━━━━━━━━━━━━\n"
+            self.game,
+            "collection",
+            f"<b>🃏 МОЯ КОЛЛЕКЦИЯ</b>\n━━━━━━━━━━━━━━\n"
             f"Экземпляров: {total} · Страница {page + 1}/{max(1, (total + 5) // 6)}\n"
             f"Фильтр: {
                 h(
@@ -125,6 +152,12 @@ class RPGScreens:
                 else "У каждой копии свой уровень, NP и место в отряде."
             ),
             keyboard(buttons),
+            subtitle=f"Карточек: {total} · страница {page + 1}",
+            metrics=(
+                "Отряды • Редкости • NP",
+                "Фильтры и сортировка",
+                "Выбери карточку для развития",
+            ),
         )
 
     async def filters(self, event, sort):
@@ -167,7 +200,7 @@ class RPGScreens:
             "weekly": "ЕЖЕНЕДЕЛЬНЫЕ ЗАДАНИЯ",
             "achievements": "ДОСТИЖЕНИЯ",
         }
-        text = f"<b>{titles[scope]}</b>\n"
+        text = f"<b>📋 {titles[scope]}</b>\n"
         text += "━━━━━━━━━━━━━━\n"
         rows = []
         for obj, value, key in board[page * 5 : page * 5 + 5]:
@@ -197,7 +230,8 @@ class RPGScreens:
         _, grants, now = await self.game.reward_board(event.from_user.id, category)
         grants = [g for g in grants if category == "all" or g.category == category]
         page = max(0, min(page, max(0, (len(grants) - 1) // 6)))
-        text = f"<b>{'ИГРОВАЯ ПОЧТА' if category == 'mail' else 'НАГРАДЫ'}</b>\n━━━━━━━━━━━━━━\n"
+        title = "✉️ ИГРОВАЯ ПОЧТА" if category == "mail" else "🎁 НАГРАДЫ"
+        text = f"<b>{title}</b>\n━━━━━━━━━━━━━━\n"
         rows = []
         for g in grants[page * 6 : page * 6 + 6]:
             status = (
@@ -254,16 +288,25 @@ class RPGScreens:
             "Пропуск не сбрасывает календарь. После семи получений начинается новый цикл.\n"
             "Бонусы календаря забираются отдельно в наградах. Новый день — 00:00 UTC."
         )
-        await display(
+        await display_scene(
             event,
+            self.game,
+            "calendar",
             text,
             keyboard(
                 [
-                    [("Получить ежедневный бонус", "fc:daily")],
-                    [("Бонусы календаря", "r2:rewards:calendar:0")],
+                    [("🎁 Получить ежедневный бонус", "fc:daily")],
+                    [("💎 Бонусы календаря", "r2:rewards:calendar:0")],
                     back(),
                 ]
             ),
+            subtitle=f"День {position} / 7",
+            metrics=(
+                f"Всего посещений: {total}",
+                f"Бонус: +{extra} Coins",
+                f"Опыт: +{xp} EXP",
+            ),
+            progress=((total - 1) % 7 + 1 if total else 0, 7),
         )
 
     async def tutorial(self, event, action=None):
@@ -304,20 +347,24 @@ class RPGScreens:
         await display(event, text, keyboard(rows))
 
     async def activities(self, event):
-        await display(
+        await display_scene(
             event,
-            "<b>АКТИВНОСТИ</b>\n━━━━━━━━━━━━━━\n"
+            self.game,
+            "activities",
+            "<b>🎮 АКТИВНОСТИ</b>\n━━━━━━━━━━━━━━\n"
             "Башня — Coins и EXP за каждый бой с победой.\n"
             "Задания — цели на день и неделю.\nДостижения — награды за ваш путь.\n"
             "Энергии и таймеров ожидания боя нет.",
             keyboard(
                 [
-                    [("Бесконечная башня", "fc:tower"), ("Мой отряд", "fc:team")],
-                    [("Задания дня", "r2:q:daily:0"), ("Задания недели", "r2:q:weekly:0")],
-                    [("Достижения", "r2:q:achievements:0"), ("Календарь", "r2:calendar")],
+                    [("🏰 Башня", "fc:tower"), ("⚔️ Отряд", "fc:team")],
+                    [("📋 Задания дня", "r2:q:daily:0"), ("📅 Задания недели", "r2:q:weekly:0")],
+                    [("🏆 Достижения", "r2:q:achievements:0"), ("🎁 Календарь", "r2:calendar")],
                     back(),
                 ]
             ),
+            subtitle="Новые подвиги каждый день",
+            metrics=("⚔ Бесконечная башня", "Награды и достижения", "Без энергии и ограничений"),
         )
 
     async def tower(self, event, floor=None):
@@ -327,8 +374,11 @@ class RPGScreens:
         fighters = [combat_stats(c, card) for _, card, c in members]
         expected = battle(floor, fighters) if fighters else None
         text = (
-            f"<b>БЕСКОНЕЧНАЯ БАШНЯ · {floor}</b>\n━━━━━━━━━━━━━━\n"
-            f"{enemy_name(floor)}\nHP {enemy['hp']} · ATK {enemy['atk']} · DEF {enemy['def']}\n"
+            f"<b>🏰 БЕСКОНЕЧНАЯ БАШНЯ · ЭТАЖ {floor}</b>\n━━━━━━━━━━━━━━\n"
+            f"👹 <b>{enemy_name(floor)}</b>\n"
+            f"❤️ HP: {coins(enemy['hp'])} / {coins(enemy['hp'])}\n"
+            f"{hit_bar(enemy['hp'], enemy['hp'])}\n"
+            f"⚔️ ATK {coins(enemy['atk'])} · 🛡 DEF {coins(enemy['def'])}\n"
             f"Рекорд: {highest} · Отряд: {len(members)}/3\n"
             + "\n".join(
                 f"{slot}. {h(c.name_en)} · ур. {card.level} · NP {card.np}"
@@ -366,7 +416,20 @@ class RPGScreens:
             [("Мой отряд", "fc:team"), ("Награды этажей", "r2:rewards:all:0")],
             back(),
         ]
-        await display(event, text, keyboard(rows))
+        await display_scene(
+            event,
+            self.game,
+            "tower",
+            text,
+            keyboard(rows),
+            subtitle=f"Этаж {floor} · {enemy_name(floor)}",
+            metrics=(
+                f"HP врага: {coins(enemy['hp'])}",
+                f"ATK: {coins(enemy['atk'])}  DEF: {coins(enemy['def'])}",
+                f"Ваш рекорд: {highest}",
+            ),
+            hp=(enemy["hp"], enemy["hp"]),
+        )
 
     async def handle(self, event, parts):
         action = parts[1] if len(parts) > 1 else ""
