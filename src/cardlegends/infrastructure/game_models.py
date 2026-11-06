@@ -87,7 +87,12 @@ class Wallet(Base):
     player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), primary_key=True)
     balance: Mapped[int] = mapped_column(Integer)
     xp: Mapped[int] = mapped_column(Integer, default=0)
-    __table_args__ = (CheckConstraint("balance >= 0"), CheckConstraint("xp >= 0"))
+    training_xp: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    __table_args__ = (
+        CheckConstraint("balance >= 0"),
+        CheckConstraint("xp >= 0"),
+        CheckConstraint("training_xp >= 0", name="ck_wallet_training_xp"),
+    )
 
 
 class Banner(Base):
@@ -163,6 +168,7 @@ class CardUpgrade(Base):
     kind: Mapped[str] = mapped_column(String(12), nullable=False)
     steps: Mapped[int] = mapped_column(Integer, nullable=False)
     coin_cost: Mapped[int] = mapped_column(Integer, nullable=False)
+    xp_cost: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     key: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     __table_args__ = (
@@ -170,6 +176,7 @@ class CardUpgrade(Base):
         CheckConstraint("kind IN ('level','np')", name="ck_card_upgrades_kind"),
         CheckConstraint("steps BETWEEN 1 AND 10", name="ck_card_upgrades_steps"),
         CheckConstraint("coin_cost >= 0", name="ck_card_upgrades_cost"),
+        CheckConstraint("xp_cost >= 0", name="ck_card_upgrades_xp_cost"),
     )
 
 
@@ -204,3 +211,50 @@ class RenderCache(Base):
     __tablename__ = "render_cache"
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     file_id: Mapped[str] = mapped_column(Text)
+
+
+class SquadSlot(Base):
+    """A player can assign an owned, unconsumed card to one of three combat slots."""
+
+    __tablename__ = "squad_slots"
+    player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), primary_key=True)
+    slot: Mapped[int] = mapped_column(Integer, primary_key=True)
+    card_id: Mapped[UUID] = mapped_column(ForeignKey("owned_cards.id"), nullable=False)
+    __table_args__ = (
+        CheckConstraint("slot BETWEEN 1 AND 3", name="ck_squad_slot"),
+        UniqueConstraint("card_id", name="uq_squad_card"),
+    )
+
+
+class TowerProgress(Base):
+    __tablename__ = "tower_progress"
+    player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), primary_key=True)
+    highest_cleared: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    __table_args__ = (CheckConstraint("highest_cleared >= 0", name="ck_tower_progress_floor"),)
+
+
+class TowerRun(Base):
+    """Each button press is recorded once, including defeats and replay attempts."""
+
+    __tablename__ = "tower_runs"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), nullable=False)
+    key: Mapped[str] = mapped_column(String(16), nullable=False)
+    floor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    victory: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    turns: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_hp: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    coins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    xp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    __table_args__ = (
+        UniqueConstraint("player_id", "key", name="uq_tower_runs_player_key"),
+        CheckConstraint("floor >= 1", name="ck_tower_runs_floor"),
+        CheckConstraint("turns BETWEEN 1 AND 60", name="ck_tower_runs_turns"),
+        CheckConstraint("coins >= 0 AND xp >= 0", name="ck_tower_runs_rewards"),
+        Index("ix_tower_runs_player_created", "player_id", "created_at"),
+    )
