@@ -77,7 +77,12 @@ async def test_all_commands_catalog_collection_and_locked_preview(fate_game, bot
         1,
     ):
         await routes.feed_update(bot, command_update(command, i))
-        assert isinstance(bot.session.calls[-1], SendMessage)
+        response = bot.session.calls[-1]
+        if command == "/start":
+            assert isinstance(response, SendPhoto)
+            assert "ANIMEVAULT" in response.caption
+        else:
+            assert isinstance(response, SendMessage)
     await routes.feed_update(bot, command_update("/collection", 20))
     text_ = bot.session.calls[-1].text
     assert "0/4" in text_ and text_.count("×0") == 4 and "Assassin × Archer" in text_

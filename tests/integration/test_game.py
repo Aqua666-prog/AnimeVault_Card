@@ -154,7 +154,7 @@ async def test_art_rights_import_replacement_and_rejection(game, tmp_path):
 async def test_real_game_router_navigation_callbacks_and_privacy(game, bot):
     from datetime import UTC, datetime
 
-    from aiogram.methods import AnswerCallbackQuery
+    from aiogram.methods import AnswerCallbackQuery, SendPhoto
     from aiogram.types import CallbackQuery, Chat, Message, Update, User
 
     from cardlegends.application.players import PlayerService
@@ -170,7 +170,9 @@ async def test_real_game_router_navigation_callbacks_and_privacy(game, bot):
         text="/start",
     )
     await dispatcher.feed_update(bot, Update(update_id=1, message=message))
-    assert "ANIMEVAULT" in bot.session.calls[-1].text
+    welcome = bot.session.calls[-1]
+    assert isinstance(welcome, SendPhoto)
+    assert "ANIMEVAULT" in welcome.caption
     for index, data in enumerate(
         [
             "av:summon",
