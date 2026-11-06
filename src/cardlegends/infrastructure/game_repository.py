@@ -370,7 +370,12 @@ class GameService:
                     Character.code == code,
                     OwnedCard.consumed_at.is_(None),
                 )
-                .order_by(OwnedCard.np.desc(), OwnedCard.level.desc(), OwnedCard.created_at, OwnedCard.id)
+                .order_by(
+                    OwnedCard.np.desc(),
+                    OwnedCard.level.desc(),
+                    OwnedCard.created_at,
+                    OwnedCard.id,
+                )
                 .limit(1)
             )
         if card_id is None:
