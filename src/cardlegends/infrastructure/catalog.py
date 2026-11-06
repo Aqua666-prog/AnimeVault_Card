@@ -4,15 +4,14 @@ from importlib.resources import files
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
-from cardlegends.domain.game import WEIGHTS, Economy
+from cardlegends.domain.fate import BANNER_CODE, BANNER_ID, BANNER_NAME, DROP_RATES
 from cardlegends.infrastructure.game_models import Banner, BannerPool, Character, Franchise
 
-# Shared by startup and the administrative CLI, across processes/replicas.
 CATALOG_LOCK = 0x4156434154414C
 
 
 class CatalogIdentityConflict(Exception):
-    """A reserved ID/slug belongs to another character; never silently reuse it."""
+    """Reserved technical identities conflict with operator data; do not overwrite."""
 
 
 def catalog_data():
@@ -20,58 +19,62 @@ def catalog_data():
 
 
 async def seed(sessions, economy=None):
-    """Add missing defaults atomically; never overwrite existing rows or a configured pool.
+    """Serialize startup/CLI; add exactly four Fate cards, preserving all legacy rows.
 
-    A fully initialized DB requires only SELECT privileges. First initialization also
-    requires INSERT on the four catalog tables, but no DDL/UPDATE/DELETE privileges.
-    The transaction lock is released on commit, rollback, cancellation or disconnect.
-    The database command timeout bounds contention: a timeout fails startup safely.
+    Completed installations need only SELECT. First initialization additionally needs
+    INSERT on franchises/characters/banners/banner_pools, never UPDATE/DELETE or DDL.
     """
-    economy = economy or Economy()
     entries = catalog_data()
     async with sessions.begin() as session:
         await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": CATALOG_LOCK})
-        characters = dict((await session.execute(select(Character.id, Character.slug))).all())
-        slugs = {slug: id_ for id_, slug in characters.items()}
+        existing = list(await session.scalars(select(Character)))
         for entry in entries:
-            if (entry["id"] in characters and characters[entry["id"]] != entry["slug"]) or (
-                entry["slug"] in slugs and slugs[entry["slug"]] != entry["id"]
+            collisions = [
+                c
+                for c in existing
+                if c.id == entry["id"] or c.slug == entry["slug"] or c.code == entry["code"]
+            ]
+            if any(
+                (c.id, c.slug, c.code) != (entry["id"], entry["slug"], entry["code"])
+                for c in collisions
             ):
                 raise CatalogIdentityConflict()
-        franchises = set(await session.scalars(select(Franchise.id)))
+        banners = list(
+            await session.scalars(
+                select(Banner).where((Banner.id == BANNER_ID) | (Banner.code == BANNER_CODE))
+            )
+        )
+        if any(b.id != BANNER_ID or b.code != BANNER_CODE for b in banners):
+            raise CatalogIdentityConflict()
+        if await session.get(Franchise, "fate") is None:
+            await session.execute(insert(Franchise).values(id="fate", name="Fate"))
+        ids = {c.id for c in existing}
         for entry in entries:
-            if entry["franchise_id"] not in franchises:
+            if entry["id"] not in ids:
                 await session.execute(
-                    insert(Franchise)
-                    .values(id=entry["franchise_id"], name=entry["franchise"])
-                    .on_conflict_do_nothing()
+                    insert(Character).values(**{k: v for k, v in entry.items() if k != "franchise"})
                 )
-                franchises.add(entry["franchise_id"])
-            if entry["id"] not in characters:
-                values = {k: v for k, v in entry.items() if k != "franchise"}
-                await session.execute(insert(Character).values(**values).on_conflict_do_nothing())
-        if await session.get(Banner, 1) is None:
+        if not banners:
             await session.execute(
-                insert(Banner)
-                .values(
-                    id=1,
-                    name="Начало коллекции",
-                    description="Постоянный баннер • 30 персонажей",
-                    weights=list(WEIGHTS),
-                    single_cost=economy.single,
-                    ten_cost=economy.ten,
+                insert(Banner).values(
+                    id=BANNER_ID,
+                    code=BANNER_CODE,
+                    name=BANNER_NAME,
+                    description="Fate Collection: 4 карточки, без гарантий и pity.",
+                    weights=[0, 0, 0, 99, 1],
+                    drop_rates=DROP_RATES,
+                    single_cost=100,
+                    ten_cost=1000,
+                    guaranteed_sr=False,
                 )
-                .on_conflict_do_nothing()
             )
-        # An existing nonempty pool may have been deliberately customized.
-        if (
-            await session.scalar(
-                select(BannerPool.character_id).where(BannerPool.banner_id == 1).limit(1)
+        pool = set(
+            await session.scalars(
+                select(BannerPool.character_id).where(BannerPool.banner_id == BANNER_ID)
             )
-            is None
-        ):
-            await session.execute(
-                insert(BannerPool)
-                .values([{"banner_id": 1, "character_id": entry["id"]} for entry in entries])
-                .on_conflict_do_nothing()
-            )
+        )
+        expected = {e["id"] for e in entries}
+        if pool - expected:
+            raise CatalogIdentityConflict()
+        for id_ in sorted(expected - pool):
+            await session.execute(insert(BannerPool).values(banner_id=BANNER_ID, character_id=id_))

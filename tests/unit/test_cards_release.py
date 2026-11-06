@@ -12,10 +12,10 @@ from cardlegends.infrastructure.cards import render, validate_image
 from cardlegends.infrastructure.catalog import catalog_data
 
 
-def test_catalog_weights_guarantee_and_render():
+def test_fate_catalog_and_legacy_renderer_compatibility():
     data = catalog_data()
-    assert len(data) == len({c["slug"] for c in data}) == 30
-    assert len({c["franchise_id"] for c in data}) == 6
+    assert len(data) == len({c["slug"] for c in data}) == 4
+    assert len({c["franchise_id"] for c in data}) == 1
     assert sum(WEIGHTS) == 100
     pool = {r: [SimpleNamespace(rarity=r)] for r in RARITIES}
     for seed in range(100):

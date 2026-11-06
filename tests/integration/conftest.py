@@ -58,3 +58,29 @@ async def database(database_url):
                 assert await conn.scalar(text("SELECT to_regclass('public.players')")) is None
         finally:
             await verification.dispose()
+
+
+@pytest.fixture
+def fate_assets(tmp_path):
+    # Tiny synthetic fixtures exercise byte-preserving delivery, never shipped as card art.
+    from PIL import Image
+
+    from cardlegends.domain.fate import CARD_IDS
+
+    root = tmp_path / "cards"
+    root.mkdir()
+    for i, code in enumerate(CARD_IDS):
+        Image.new("RGB", (80, 120), (20 + i, 40, 60)).save(root / f"{code}.png")
+    return root
+
+
+@pytest.fixture
+async def fate_game(database, fate_assets):
+    from cardlegends.infrastructure.catalog import seed
+    from cardlegends.infrastructure.game_repository import GameService
+    from cardlegends.infrastructure.players import PostgresPlayerRepository
+
+    _, sessions = database
+    await seed(sessions)
+    await PostgresPlayerRepository(sessions).upsert(42, "Игрок", None)
+    return GameService(sessions, randbelow=lambda _: 0, cooldown_seconds=0, cards_dir=fate_assets)

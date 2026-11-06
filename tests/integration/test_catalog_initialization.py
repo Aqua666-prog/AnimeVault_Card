@@ -35,37 +35,41 @@ async def test_empty_database_then_repeat_is_exactly_unchanged(database):
         assert await conn.scalar(text("SELECT count(*) FROM banners")) == 0
     await seed(sessions)
     async with engine.connect() as conn:
-        assert await conn.scalar(text("SELECT count(*) FROM characters")) == 30
-        assert await conn.scalar(text("SELECT count(*) FROM franchises")) == 6
-        assert await conn.scalar(text("SELECT count(*) FROM banner_pools")) == 30
+        assert await conn.scalar(text("SELECT count(*) FROM characters")) == 4
+        assert await conn.scalar(text("SELECT count(*) FROM franchises")) == 1
+        assert await conn.scalar(text("SELECT count(*) FROM banner_pools")) == 4
         assert await conn.scalar(text("SELECT count(*) FROM players")) == 0
-        row = (await conn.execute(text("SELECT * FROM banners WHERE id = 1"))).mappings().one()
+        row = (await conn.execute(text("SELECT * FROM banners WHERE id = 2"))).mappings().one()
         assert row["active"] and row["starts_at"] is None and row["ends_at"] is None
-        assert row["weights"] == [50, 30, 15, 4, 1]
+        assert row["drop_rates"] == {
+            "AV-F001": 3300,
+            "AV-F002": 3300,
+            "AV-F003": 3300,
+            "AV-L001": 100,
+        }
     before = await snapshot(engine)
     await seed(sessions)
     assert await snapshot(engine) == before
 
 
-async def test_existing_game_art_catalog_and_custom_banner_are_preserved(database):
+async def test_existing_game_art_catalog_and_custom_banner_are_preserved(database, fate_assets):
     engine, sessions = database
     await seed(sessions)
     await PostgresPlayerRepository(sessions).upsert(42, "Игрок", None)
-    game = GameService(sessions)
+    game = GameService(sessions, cards_dir=fate_assets)
     await game.profile(42)
-    await game.summon(42, 1, "existing-summon")
+    await game.summon(42, 1, uuid4().hex)
     await game.daily(42)
     async with engine.begin() as conn:
         await conn.execute(
-            text("UPDATE characters SET name_ru = 'Изменено', is_active = false WHERE id = 1")
+            text("UPDATE characters SET name_ru = 'Изменено', is_active = false WHERE id = 1001")
         )
         await conn.execute(
             text(
                 "UPDATE banners SET single_cost = 123, ten_cost = 999, "
-                "active = false, weights = '[40,40,10,9,1]' WHERE id = 1"
+                "active = false, weights = '[40,40,10,9,1]' WHERE id = 2"
             )
         )
-        await conn.execute(text("DELETE FROM banner_pools WHERE character_id != 1"))
         await conn.execute(text("UPDATE owned_cards SET favorite = true"))
         await conn.execute(
             text(
@@ -80,7 +84,7 @@ async def test_existing_game_art_catalog_and_custom_banner_are_preserved(databas
         await conn.execute(
             text(
                 "UPDATE characters SET image_asset_id = "
-                "(SELECT id FROM image_assets LIMIT 1) WHERE id = 1"
+                "(SELECT id FROM image_assets LIMIT 1) WHERE id = 1001"
             )
         )
     before = await snapshot(engine)
@@ -94,14 +98,14 @@ async def test_partial_catalog_is_completed_without_overwriting_rows(database):
     async with engine.begin() as conn:
         await conn.execute(text("DELETE FROM banner_pools"))
         await conn.execute(text("DELETE FROM banners"))
-        await conn.execute(text("DELETE FROM characters WHERE id > 1"))
-        await conn.execute(text("UPDATE characters SET description = 'Сохранить' WHERE id = 1"))
+        await conn.execute(text("DELETE FROM characters WHERE id > 1001"))
+        await conn.execute(text("UPDATE characters SET description = 'Сохранить' WHERE id = 1001"))
     await seed(sessions)
     async with engine.connect() as conn:
-        assert await conn.scalar(text("SELECT count(*) FROM characters")) == 30
-        assert await conn.scalar(text("SELECT count(*) FROM banner_pools")) == 30
+        assert await conn.scalar(text("SELECT count(*) FROM characters")) == 4
+        assert await conn.scalar(text("SELECT count(*) FROM banner_pools")) == 4
         assert (
-            await conn.scalar(text("SELECT description FROM characters WHERE id = 1"))
+            await conn.scalar(text("SELECT description FROM characters WHERE id = 1001"))
             == "Сохранить"
         )
 
@@ -110,7 +114,9 @@ async def test_identity_collision_fails_without_changes(database):
     engine, sessions = database
     await seed(sessions)
     async with engine.begin() as conn:
-        await conn.execute(text("UPDATE characters SET slug = 'operator-character' WHERE id = 1"))
+        await conn.execute(
+            text("UPDATE characters SET slug = 'operator-character' WHERE id = 1001")
+        )
     before = await snapshot(engine)
     with pytest.raises(CatalogIdentityConflict):
         await seed(sessions)

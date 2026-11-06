@@ -1,10 +1,13 @@
+import asyncio
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
-from cardlegends.domain.game import RARITIES, Economy, GameError, draw
+from cardlegends.domain.fate import BANNER_ID, CARD_IDS, DROP_RATES, draw_fate
+from cardlegends.domain.game import RARITIES, Economy, GameError
+from cardlegends.infrastructure.fate_images import require_card_images
 from cardlegends.infrastructure.game_models import (
     Banner,
     BannerPool,
@@ -20,8 +23,18 @@ from cardlegends.infrastructure.models import PlayerRow
 
 
 class GameService:
-    def __init__(self, sessions, economy=None, rng=None):
-        self.sessions, self.economy, self.rng = sessions, economy or Economy(), rng
+    def __init__(self, sessions, economy=None, randbelow=None, cooldown_seconds=1, cards_dir=None):
+        self.sessions, self.economy = sessions, economy or Economy()
+        # One original in flight at a time on the small Dada Cloud worker.
+        self.media_lock = asyncio.Semaphore(1)
+        # Do not share the delivery lock with checks inside a DB transaction:
+        # delivery may itself need a connection for the file_id cache.
+        self.asset_check_lock = asyncio.Semaphore(1)
+        self.randbelow, self.cooldown_seconds, self.cards_dir = (
+            randbelow,
+            cooldown_seconds,
+            cards_dir,
+        )
 
     async def wallet(self, session, telegram_id):
         # Lock player first: all economic operations use the same lock order.
@@ -30,22 +43,11 @@ class GameService:
         )
         if not player:
             raise GameError("Сначала нажмите /start.")
-        created = await session.scalar(
-            insert(Wallet)
-            .values(player_id=player.id, balance=self.economy.initial, xp=0)
-            .on_conflict_do_nothing()
-            .returning(Wallet.player_id)
+        # Old accounts with no wallet do not receive a new-account bonus via /start.
+        # New registrations create their wallet and bonus in the registration transaction.
+        await session.execute(
+            insert(Wallet).values(player_id=player.id, balance=0, xp=0).on_conflict_do_nothing()
         )
-        if created:
-            session.add(
-                CurrencyTransaction(
-                    player_id=player.id,
-                    kind="initial",
-                    delta=self.economy.initial,
-                    balance_after=self.economy.initial,
-                    key="initial",
-                )
-            )
         player.last_seen_at = datetime.now(UTC)
         wallet = await session.get(Wallet, player.id)
         return player, wallet
@@ -57,14 +59,23 @@ class GameService:
                 await session.execute(
                     select(
                         func.count(OwnedCard.id), func.count(func.distinct(OwnedCard.character_id))
-                    ).where(OwnedCard.player_id == player.id)
+                    )
+                    .join(Character, Character.id == OwnedCard.character_id)
+                    .where(OwnedCard.player_id == player.id, Character.code.in_(CARD_IDS))
                 )
             ).one()
             summons = await session.scalar(
                 select(func.count()).select_from(Summon).where(Summon.player_id == player.id)
             )
-            size = await session.scalar(
-                select(func.count()).select_from(Character).where(Character.is_active.is_(True))
+            size = len(CARD_IDS)
+            archived = await session.scalar(
+                select(func.count())
+                .select_from(OwnedCard)
+                .join(Character, Character.id == OwnedCard.character_id)
+                .where(
+                    OwnedCard.player_id == player.id,
+                    or_(Character.code.is_(None), Character.code.not_in(CARD_IDS)),
+                )
             )
             return dict(
                 player=player,
@@ -75,6 +86,7 @@ class GameService:
                 unique=unique,
                 summons=summons,
                 size=size,
+                archived=archived,
             )
 
     async def daily(self, user):
@@ -97,41 +109,79 @@ class GameService:
             session.add(DailyReward(player_id=player.id, day=day, transaction_id=transaction.id))
             return wallet.balance
 
-    async def summon(self, user, count, key):
-        if count not in (1, 10) or len(key) > 64:
+    async def summon(self, user, count, key, telegram_update_id=None):
+        if type(count) is not int or count not in (1, 10):
             raise GameError("Неверный призыв.")
+        try:
+            key = UUID(key).hex
+        except (ValueError, AttributeError, TypeError):
+            raise GameError("Кнопка устарела. Откройте /summon.") from None
+        if telegram_update_id is not None and (
+            type(telegram_update_id) is not int or not 0 <= telegram_update_id < 2**63
+        ):
+            raise GameError("Некорректный update.")
         async with self.sessions.begin() as session:
             player, wallet = await self.wallet(session, user)
+            identity = Summon.key == key
+            if telegram_update_id is not None:
+                identity = or_(identity, Summon.telegram_update_id == telegram_update_id)
             old = await session.scalar(
-                select(Summon).where(Summon.player_id == player.id, Summon.key == key)
+                select(Summon).where(Summon.player_id == player.id, identity)
             )
             if old:
-                return old.id
-            banner = await session.get(Banner, 1)
-            now = datetime.now(UTC)
+                if old.count != count or old.banner_id != BANNER_ID:
+                    raise GameError("Эта операция уже выполнена. Откройте историю.")
+                return old.id  # Before balance, cooldown, asset and availability checks.
+            banner = await session.get(Banner, BANNER_ID)
+            now = await session.scalar(select(func.clock_timestamp()))
             if (
                 not banner
                 or not banner.active
+                or banner.drop_rates != DROP_RATES
+                or banner.single_cost != 100
+                or banner.ten_cost != 1000
+                or banner.guaranteed_sr
                 or (banner.starts_at and now < banner.starts_at)
                 or (banner.ends_at and now >= banner.ends_at)
-                or not banner.guaranteed_sr
             ):
-                raise GameError("Баннер недоступен.")
+                raise GameError("Fate-баннер недоступен. Попробуйте позже.")
             characters = list(
                 await session.scalars(
                     select(Character)
                     .join(BannerPool, BannerPool.character_id == Character.id)
-                    .where(BannerPool.banner_id == banner.id, Character.is_active.is_(True))
+                    .where(BannerPool.banner_id == BANNER_ID)
                 )
             )
-            pool = {r: [c for c in characters if c.rarity == r] for r in RARITIES}
+            by_code = {c.code: c for c in characters}
+            if (
+                set(by_code) != set(DROP_RATES)
+                or len(characters) != 4
+                or any(not c.is_active or c.id != CARD_IDS[c.code] for c in characters)
+            ):
+                raise GameError("Каталог баннера недоступен. Обратитесь к администратору.")
             cost = banner.single_cost if count == 1 else banner.ten_cost
             if wallet.balance < cost:
-                raise GameError("Недостаточно кристаллов. Получите ежедневную награду.")
-            chosen = draw(pool, count, banner.weights, self.rng)
+                raise GameError("Недостаточно AnimeVault Coins. Получите ежедневную награду.")
+            last = await session.scalar(
+                select(func.max(Summon.created_at)).where(Summon.player_id == player.id)
+            )
+            if last and (now - last).total_seconds() < self.cooldown_seconds:
+                raise GameError("Слишком быстро. Подождите секунду и повторите нажатие.")
+            async with self.asset_check_lock:
+                await asyncio.to_thread(require_card_images, self.cards_dir)
+            chosen = draw_fate(count, banner.drop_rates, self.randbelow)
             wallet.balance -= cost
             wallet.xp += count * self.economy.xp_per_card
-            summon = Summon(player_id=player.id, banner_id=banner.id, key=key, count=count)
+            summon = Summon(
+                player_id=player.id,
+                banner_id=BANNER_ID,
+                key=key,
+                count=count,
+                total_cost=cost,
+                balance_after=wallet.balance,
+                telegram_update_id=telegram_update_id,
+                created_at=now,
+            )
             session.add(summon)
             await session.flush()
             session.add(
@@ -144,12 +194,62 @@ class GameService:
                     related_id=str(summon.id),
                 )
             )
-            for position, character in enumerate(chosen):
-                card = OwnedCard(player_id=player.id, character_id=character.id)
+            for position, code in enumerate(chosen):
+                card = OwnedCard(player_id=player.id, character_id=by_code[code].id)
                 session.add(card)
                 await session.flush()
                 session.add(SummonResult(summon_id=summon.id, position=position, card_id=card.id))
             return summon.id
+
+    async def operation(self, user, summon_id):
+        async with self.sessions() as session:
+            operation = await session.scalar(
+                select(Summon)
+                .join(PlayerRow)
+                .where(PlayerRow.telegram_id == user, Summon.id == UUID(str(summon_id)))
+            )
+            if not operation:
+                raise GameError("Призыв не найден.")
+            return operation
+
+    async def collection(self, user):
+        async with self.sessions() as session:
+            counts = (
+                select(
+                    OwnedCard.character_id.label("character_id"),
+                    func.count().label("quantity"),
+                    func.min(OwnedCard.created_at).label("first_obtained"),
+                    func.max(OwnedCard.created_at).label("last_obtained"),
+                )
+                .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
+                .where(PlayerRow.telegram_id == user)
+                .group_by(OwnedCard.character_id)
+                .subquery()
+            )
+            return list(
+                (
+                    await session.execute(
+                        select(
+                            Character,
+                            func.coalesce(counts.c.quantity, 0),
+                            counts.c.first_obtained,
+                            counts.c.last_obtained,
+                        )
+                        .outerjoin(counts, counts.c.character_id == Character.id)
+                        .where(Character.code.in_(CARD_IDS))
+                        .order_by(Character.id)
+                    )
+                ).all()
+            )
+
+    async def fate_character(self, code):
+        if code not in CARD_IDS:
+            raise GameError("Неизвестный номер карточки.")
+        async with self.sessions() as session:
+            character = await session.scalar(select(Character).where(Character.code == code))
+            if not character:
+                raise GameError("Каталог ещё не инициализирован.")
+            return character
 
     async def results(self, user, summon_id):
         async with self.sessions() as session:
@@ -168,7 +268,15 @@ class GameService:
             )
 
     async def browse(
-        self, user, owned=False, page=0, rarity="all", franchise="all", sort="rarity", fav=False
+        self,
+        user,
+        owned=False,
+        page=0,
+        rarity="all",
+        franchise="all",
+        sort="rarity",
+        fav=False,
+        archived=False,
     ):
         async with self.sessions() as session:
             if owned:
@@ -189,6 +297,10 @@ class GameService:
                         .where(PlayerRow.telegram_id == user, OwnedCard.favorite.is_(True))
                     )
                     stmt = stmt.where(Character.id.in_(favorites))
+            if archived:
+                stmt = stmt.where(or_(Character.code.is_(None), Character.code.not_in(CARD_IDS)))
+            else:
+                stmt = stmt.where(Character.code.in_(CARD_IDS))
             if rarity != "all":
                 stmt = stmt.where(Character.rarity == rarity)
             if franchise != "all":
@@ -231,6 +343,22 @@ class GameService:
                 )
             )
             return *result, copies
+
+    async def owned_character(self, user, code):
+        if code not in CARD_IDS:
+            raise GameError("Неизвестный номер карточки.")
+        async with self.sessions() as session:
+            card_id = await session.scalar(
+                select(OwnedCard.id)
+                .join(Character)
+                .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
+                .where(PlayerRow.telegram_id == user, Character.code == code)
+                .order_by(OwnedCard.created_at, OwnedCard.id)
+                .limit(1)
+            )
+        if card_id is None:
+            raise GameError("🔒 Карточка ещё не получена. Полное изображение скрыто.")
+        return await self.card(user, card_id)
 
     async def favorite(self, user, card_id, value):
         async with self.sessions.begin() as session:
@@ -297,7 +425,7 @@ class GameService:
 
     async def banner_info(self):
         async with self.sessions() as session:
-            banner = await session.get(Banner, 1)
+            banner = await session.get(Banner, BANNER_ID)
             if not banner:
                 raise GameError("Баннер не инициализирован. Обратитесь к администратору.")
             return banner

@@ -1,9 +1,11 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from cardlegends.domain.game import Economy
 from cardlegends.domain.players import PersistenceError, Player
+from cardlegends.infrastructure.game_models import CurrencyTransaction, Wallet
 from cardlegends.infrastructure.models import PlayerRow
 
 
@@ -30,18 +32,39 @@ class PostgresPlayerRepository:
             username=username,
             last_seen_at=func.now(),
         )
-        statement = statement.on_conflict_do_update(
-            constraint="uq_players_telegram_id",
-            set_={
-                "display_name": statement.excluded.display_name,
-                "username": statement.excluded.username,
-                "updated_at": func.clock_timestamp(),
-                "last_seen_at": func.clock_timestamp(),
-            },
-        ).returning(PlayerRow)
+        statement = statement.on_conflict_do_nothing(constraint="uq_players_telegram_id").returning(
+            PlayerRow
+        )
         try:
             async with self.sessions.begin() as session:
-                row = (await session.scalars(statement)).one()
+                row = (await session.scalars(statement)).one_or_none()
+                if row is not None:
+                    # The account and its one-time grant are committed together.
+                    initial = Economy().initial
+                    session.add(Wallet(player_id=row.id, balance=initial, xp=0))
+                    session.add(
+                        CurrencyTransaction(
+                            player_id=row.id,
+                            kind="initial",
+                            delta=initial,
+                            balance_after=initial,
+                            key="initial",
+                        )
+                    )
+                else:
+                    row = (
+                        await session.scalars(
+                            update(PlayerRow)
+                            .where(PlayerRow.telegram_id == telegram_id)
+                            .values(
+                                display_name=display_name,
+                                username=username,
+                                updated_at=func.clock_timestamp(),
+                                last_seen_at=func.now(),
+                            )
+                            .returning(PlayerRow)
+                        )
+                    ).one()
                 player = to_player(row)
             return player
         except (SQLAlchemyError, OSError, TimeoutError) as exc:

@@ -19,12 +19,14 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-async def game(database):
+async def game(database, fate_assets):
     engine, sessions = database
     await seed(sessions)
     await seed(sessions)
     await PostgresPlayerRepository(sessions).upsert(42, "Игрок", None)
-    return GameService(sessions, rng=Random(7))
+    return GameService(
+        sessions, randbelow=Random(7).randrange, cooldown_seconds=0, cards_dir=fate_assets
+    )
 
 
 async def test_initial_daily_and_concurrent_registration(game):
@@ -35,10 +37,10 @@ async def test_initial_daily_and_concurrent_registration(game):
     assert (await game.profile(42))["balance"] == 1300
     async with game.sessions() as s:
         assert await s.scalar(select(func.count()).select_from(CurrencyTransaction)) == 2
-        assert await s.scalar(select(func.count()).select_from(Character)) == 30
+        assert await s.scalar(select(func.count()).select_from(Character)) == 4
 
 
-async def test_ten_guarantee_idempotency_duplicates_and_favorites(game):
+async def test_ten_independent_idempotency_duplicates_and_favorites(game):
     key = uuid4().hex
     ids = await asyncio.gather(*[game.summon(42, 10, key) for _ in range(6)])
     assert len(set(ids)) == 1
@@ -46,7 +48,7 @@ async def test_ten_guarantee_idempotency_duplicates_and_favorites(game):
     assert len(results) == 10
     assert any(c.rarity in ("SR", "SSR", "UR") for _, c in results)
     profile = await game.profile(42)
-    assert profile["balance"] == 100 and profile["total"] == 10 and profile["xp"] == 100
+    assert profile["balance"] == 0 and profile["total"] == 10 and profile["xp"] == 100
     assert profile["level"] == 2
     card = results[0][0]
     await game.favorite(42, card.id, True)
@@ -57,7 +59,7 @@ async def test_ten_guarantee_idempotency_duplicates_and_favorites(game):
     assert count == 1 and catalog[0][0].id == card.character_id
     assert (await game.browse(43, fav=True))[1] == 0
     catalog, _, _ = await game.browse(42, sort="time")
-    assert catalog[0][0].id == 30
+    assert catalog[0][0].id == 1004
     await PostgresPlayerRepository(game.sessions).upsert(43, "Чужой", None)
     with pytest.raises(GameError):
         await game.favorite(43, card.id, False)
@@ -91,7 +93,7 @@ async def test_invalid_banner_does_not_charge_and_collection_sort(game):
         await game.summon(42, 1, uuid4().hex)
     assert (await game.profile(42))["balance"] == 1000
     rows, total, _ = await game.browse(42, franchise="fate")
-    assert total == 4 and all(row[0].franchise_id == "fate" for row in rows)
+    assert total == 3 and all(row[0].franchise_id == "fate" for row in rows)
     assert (await game.browse(42, owned=True))[1] == 0
 
 
@@ -128,8 +130,8 @@ async def test_art_rights_import_replacement_and_rejection(game, tmp_path):
         permission="unknown_license",
         metadata_json={},
     )
-    asset = await admin.save_candidate("artoria", values)
-    assert await admin.save_candidate("artoria", values) is None
+    asset = await admin.save_candidate("av-f001", values)
+    assert await admin.save_candidate("av-f001", values) is None
     path = tmp_path / "image.png"
     Image.new("RGB", (750, 1050), "blue").save(path)
     with pytest.raises(ValueError):
@@ -142,7 +144,7 @@ async def test_art_rights_import_replacement_and_rejection(game, tmp_path):
     async with game.sessions.begin() as s:
         stored = await s.get(ImageAsset, asset)
         assert stored.content and stored.permission == "approved"
-        character = await s.scalar(select(Character).where(Character.slug == "artoria"))
+        character = await s.scalar(select(Character).where(Character.slug == "av-f001"))
         assert character.image_asset_id == asset
         stored.permission = "rejected"
     with pytest.raises(ValueError):
@@ -212,28 +214,26 @@ async def test_real_game_router_navigation_callbacks_and_privacy(game, bot):
     assert len(bot.session.calls) == before + 1
 
 
-async def test_only_approved_sfw_art_is_published(game, bot):
+async def test_prepared_png_is_not_replaced_by_external_art(game, bot):
     from datetime import UTC, datetime
 
     from aiogram.types import CallbackQuery, Chat, Message, User
 
     from cardlegends.bot.game_ui import show_card
-    from cardlegends.infrastructure.cards import render
     from cardlegends.infrastructure.game_models import ImageAsset
 
-    data = render("Test", "Fate", "UR")
     async with game.sessions.begin() as s:
         asset = ImageAsset(
-            character_slug="artoria",
+            character_slug="av-f001",
             source="manual",
             post_id="test",
             page_url="https://example.test/1",
-            content=data,
+            content=b"unrelated art",
             permission="unknown_license",
         )
         s.add(asset)
         await s.flush()
-        char = await s.get(Character, 1)
+        char = await s.get(Character, 1001)
         char.image_asset_id = asset.id
     query = CallbackQuery(
         id="test",
@@ -242,21 +242,13 @@ async def test_only_approved_sfw_art_is_published(game, bot):
         message=Message(message_id=1, date=datetime.now(UTC), chat=Chat(id=42, type="private")),
     ).as_(bot)
     await show_card(query, game, char)
-    assert "заглушка" in bot.session.calls[-1].caption
-    async with game.sessions.begin() as s:
-        asset = await s.get(ImageAsset, asset.id)
-        asset.permission = "approved"
-        asset.sfw_reviewed = True
-        asset.attribution = "Автор • CC0"
-        asset.license = "CC0"
-        asset.evidence = "Explicit permission"
-    await show_card(query, game, char)
-    assert "Автор • CC0" in bot.session.calls[-1].caption
+    assert bot.session.calls[-1].photo.data == (game.cards_dir / "AV-F001.png").read_bytes()
+    assert "Artoria Pendragon" in bot.session.calls[-1].caption
     assert "заглушка" not in bot.session.calls[-1].caption
 
 
 async def test_existing_player_survives_upgrade_and_game_survives_new_engine(
-    database, database_url
+    database, database_url, fate_assets
 ):
     import os
     import subprocess
@@ -267,7 +259,7 @@ async def test_existing_player_survives_upgrade_and_game_survives_new_engine(
     engine, sessions = database
     original = await PostgresPlayerRepository(sessions).upsert(42, "Существующий игрок", None)
     await engine.dispose()
-    for action, target in [("downgrade", "0001_players"), ("upgrade", "head")]:
+    for action, target in [("downgrade", "54b3f0a493e1"), ("upgrade", "head")]:
         result = await asyncio.to_thread(
             subprocess.run,
             [sys.executable, "-m", "alembic", action, target],
@@ -281,7 +273,7 @@ async def test_existing_player_survives_upgrade_and_game_survives_new_engine(
         preserved = await PostgresPlayerRepository(ss).get_by_telegram_id(42)
         assert preserved.id == original.id and preserved.created_at == original.created_at
         await seed(ss)
-        game = GameService(ss, rng=Random(5))
+        game = GameService(ss, randbelow=Random(5).randrange, cards_dir=fate_assets)
         sid = await game.summon(42, 1, uuid4().hex)
         card = (await game.results(42, sid))[0][0]
         await game.favorite(42, card.id, True)

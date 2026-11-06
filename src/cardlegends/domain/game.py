@@ -15,12 +15,13 @@ class Economy:
     initial: int = 1000
     daily: int = 300
     single: int = 100
-    ten: int = 900
+    ten: int = 1000
     xp_per_card: int = 10
     xp_per_level: int = 100
 
 
 def draw(pool, count, weights=WEIGHTS, rng=None):
+    """Legacy v0.2 helper. Active Fate summons exclusively call domain.fate.draw_fate."""
     rng = rng or SystemRandom()
     if len(weights) != 5 or any(w <= 0 for w in weights) or sum(weights) != 100:
         raise GameError("Неверные вероятности баннера.")

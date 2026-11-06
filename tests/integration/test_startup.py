@@ -74,9 +74,9 @@ async def test_migrations_then_bot_start_with_real_postgres_and_fake_telegram(
     async def polling(*args, **kwargs):
         # Polling must never observe the migrated-but-empty catalog.
         async with engine.connect() as conn:
-            assert await conn.scalar(text("SELECT count(*) FROM characters")) == 30
-            assert await conn.scalar(text("SELECT count(*) FROM banner_pools")) == 30
-            assert await conn.scalar(text("SELECT count(*) FROM banners WHERE id = 1")) == 1
+            assert await conn.scalar(text("SELECT count(*) FROM characters")) == 4
+            assert await conn.scalar(text("SELECT count(*) FROM banner_pools")) == 4
+            assert await conn.scalar(text("SELECT count(*) FROM banners WHERE id = 2")) == 1
 
     dispatcher.start_polling = AsyncMock(side_effect=polling)
     monkeypatch.setenv("DATABASE_URL", database_url)
