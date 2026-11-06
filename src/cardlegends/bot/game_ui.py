@@ -110,9 +110,7 @@ async def display_scene(event, game, kind, text, markup=None, **values):
     if len(text) > 1024:
         return await display(event, text, markup)
     try:
-        art = await asyncio.to_thread(
-            render_scene, kind, cards_dir=game.cards_dir, **values
-        )
+        art = await asyncio.to_thread(render_scene, kind, cards_dir=game.cards_dir, **values)
     except (OSError, ValueError) as error:
         log_failure(logger, "scene_render_failed", error, "telegram_visuals")
         return await display(event, text, markup)
@@ -355,7 +353,11 @@ def create_game_router(game, players):
         text += "\nВ бою участвуют только назначенные экземпляры. Они защищены от слияния."
         rows.append([("🏰 В башню", "fc:tower")])
         await display_scene(
-            event, game, "team", text, keyboard(rows + [back()]),
+            event,
+            game,
+            "team",
+            text,
+            keyboard(rows + [back()]),
             subtitle=f"Боевая мощь: {coins(hp + 5 * atk + 3 * defense)}",
             metrics=(f"❤️ HP: {coins(hp)}", f"⚔ ATK: {coins(atk)}", f"DEF: {coins(defense)}"),
         )
@@ -414,7 +416,9 @@ def create_game_router(game, players):
         if run.first_clear:
             details += "\n◆ Новый этаж открыт. Проверьте достижения и награды."
         await display_scene(
-            event, game, "victory" if run.victory else "defeat",
+            event,
+            game,
+            "victory" if run.victory else "defeat",
             f"<b>{'🏆' if run.victory else '💀'} БАШНЯ · ЭТАЖ {run.floor} · {title}</b>\n"
             f"━━━━━━━━━━━━━━\n"
             f"⚔️ Раундов: {run.turns}\n❤️ HP отряда: {coins(run.remaining_hp)}\n"
@@ -458,7 +462,9 @@ def create_game_router(game, players):
         banner = await game.banner_info()
         issues = await asyncio.to_thread(check_card_images, game.cards_dir)
         await display_scene(
-            event, game, "summon",
+            event,
+            game,
+            "summon",
             f"<b>✨ {h(banner.name)}</b>\n━━━━━━━━━━━━━━\n"
             "⚔ Artoria 33% · Morgan 33% · Enkidu 33%\n"
             "💎 Kama &amp; Ishtar 1%\n"

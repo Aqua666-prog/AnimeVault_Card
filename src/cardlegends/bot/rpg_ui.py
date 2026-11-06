@@ -33,7 +33,11 @@ class RPGScreens:
         if not skipped and not all(steps):
             text += f"\nПутеводитель: {sum(steps)}/8 — открыт в помощи."
         await display_scene(
-            event, self.game, "home", text, menu(),
+            event,
+            self.game,
+            "home",
+            text,
+            menu(),
             subtitle=f"Добро пожаловать, {p['player'].display_name[:20]}",
             metrics=(
                 f"Ранг аккаунта: {p['level']}",
@@ -55,7 +59,9 @@ class RPGScreens:
             else "Карточек пока нет"
         )
         await display_scene(
-            event, self.game, "profile",
+            event,
+            self.game,
+            "profile",
             f"<b>👑 ПРОФИЛЬ ИГРОКА</b>\n━━━━━━━━━━━━━━\n"
             f"{h(p['player'].display_name)}\nTelegram ID: <code>{event.from_user.id}</code>\n"
             f"Ранг аккаунта {p['level']} · Всего опыта {coins(p['xp'])}\n"
@@ -120,7 +126,9 @@ class RPGScreens:
             back(),
         ]
         await display_scene(
-            event, self.game, "collection",
+            event,
+            self.game,
+            "collection",
             f"<b>🃏 МОЯ КОЛЛЕКЦИЯ</b>\n━━━━━━━━━━━━━━\n"
             f"Экземпляров: {total} · Страница {page + 1}/{max(1, (total + 5) // 6)}\n"
             f"Фильтр: {
@@ -281,7 +289,10 @@ class RPGScreens:
             "Бонусы календаря забираются отдельно в наградах. Новый день — 00:00 UTC."
         )
         await display_scene(
-            event, self.game, "calendar", text,
+            event,
+            self.game,
+            "calendar",
+            text,
             keyboard(
                 [
                     [("🎁 Получить ежедневный бонус", "fc:daily")],
@@ -337,7 +348,9 @@ class RPGScreens:
 
     async def activities(self, event):
         await display_scene(
-            event, self.game, "activities",
+            event,
+            self.game,
+            "activities",
             "<b>🎮 АКТИВНОСТИ</b>\n━━━━━━━━━━━━━━\n"
             "Башня — Coins и EXP за каждый бой с победой.\n"
             "Задания — цели на день и неделю.\nДостижения — награды за ваш путь.\n"
@@ -404,7 +417,11 @@ class RPGScreens:
             back(),
         ]
         await display_scene(
-            event, self.game, "tower", text, keyboard(rows),
+            event,
+            self.game,
+            "tower",
+            text,
+            keyboard(rows),
             subtitle=f"Этаж {floor} · {enemy_name(floor)}",
             metrics=(
                 f"HP врага: {coins(enemy['hp'])}",
