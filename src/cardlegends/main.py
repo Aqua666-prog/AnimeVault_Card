@@ -15,6 +15,7 @@ from cardlegends.infrastructure.catalog import seed
 from cardlegends.infrastructure.config import ConfigurationError, load_settings
 from cardlegends.infrastructure.database import create_database
 from cardlegends.infrastructure.diagnostics import log_failure
+from cardlegends.infrastructure.fate_images import check_card_images
 from cardlegends.infrastructure.logging import configure_logging
 from cardlegends.infrastructure.players import PostgresPlayerRepository
 
@@ -47,6 +48,8 @@ async def run() -> None:
             logger.info("startup_phase phase=%s", phase, extra={"phase": phase})
             await seed(sessions)
             logger.info("catalog_initialized")
+            for issue in await asyncio.to_thread(check_card_images):
+                logger.warning("card_asset_unavailable: %s", issue)
             phase = "telegram_client"
             logger.info("startup_phase phase=%s", phase, extra={"phase": phase})
             bot = Bot(
@@ -62,6 +65,10 @@ async def run() -> None:
             await bot.set_my_commands(
                 [
                     BotCommand(command="start", description="Регистрация и главное меню"),
+                    BotCommand(command="summon", description="Fate: призвать карточки"),
+                    BotCommand(command="collection", description="Моя коллекция Fate"),
+                    BotCommand(command="catalog", description="Каталог карточек"),
+                    BotCommand(command="rates", description="Шансы выпадения"),
                     BotCommand(command="profile", description="Ваш профиль"),
                     BotCommand(command="help", description="Помощь"),
                 ]

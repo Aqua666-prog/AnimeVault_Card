@@ -15,10 +15,19 @@ from cardlegends.infrastructure.cards import render
 from cardlegends.infrastructure.catalog import catalog_data, seed
 from cardlegends.infrastructure.config import load_database_settings
 from cardlegends.infrastructure.database import create_database
-from cardlegends.infrastructure.game_models import Character, ImageAsset
+from cardlegends.infrastructure.fate_images import check_card_images, load_card_png
+from cardlegends.infrastructure.game_models import Character, Franchise, ImageAsset
 
 
 async def run(args):
+    if args.command == "check-cards":
+        issues = await asyncio.to_thread(check_card_images)
+        for issue in issues:
+            print(issue)
+        if issues:
+            raise SystemExit(1)
+        print("Fate: 4/4 исходных PNG готовы к отправке.")
+        return
     settings = load_database_settings()
     engine, sessions = create_database(settings.database_url.get_secret_value())
     admin = ArtAdmin(sessions)
@@ -110,11 +119,18 @@ async def run(args):
                         if asset and asset.permission == "approved" and asset.sfw_reviewed
                         else None
                     )
-                    franchise = next(x["franchise"] for x in catalog_data() if x["id"] == c.id)
-                    image = await asyncio.to_thread(render, c.name_ru, franchise, c.rarity, content)
+                    if c.code:
+                        original = await asyncio.to_thread(load_card_png, c.code)
+                        image, filename = original.content, f"{c.code}.png"
+                    else:
+                        franchise = await session.get(Franchise, c.franchise_id)
+                        image = await asyncio.to_thread(
+                            render, c.name_ru, franchise.name, c.rarity, content
+                        )
+                        filename = f"{c.slug}.jpg"
                     folder = Path(args.output)
                     await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
-                    await asyncio.to_thread((folder / f"{c.slug}.jpg").write_bytes, image)
+                    await asyncio.to_thread((folder / filename).write_bytes, image)
     finally:
         await engine.dispose()
 
@@ -123,6 +139,7 @@ def main():
     parser = argparse.ArgumentParser(description="AnimeVault Cards: каталог и разрешённые арты")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("seed")
+    commands.add_parser("check-cards")
     search = commands.add_parser("search")
     search.add_argument("slug", help="slug или all")
     zs = commands.add_parser("zero-search")

@@ -2,11 +2,13 @@ from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -54,6 +56,11 @@ class Character(Base):
     __tablename__ = "characters"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     slug: Mapped[str] = mapped_column(String(80), unique=True)
+    code: Mapped[str | None] = mapped_column(String(10), unique=True)
+    card_class: Mapped[str | None] = mapped_column(String(50))
+    collection_name: Mapped[str | None] = mapped_column(String(100))
+    image_path: Mapped[str | None] = mapped_column(Text)
+    limited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     name_ru: Mapped[str] = mapped_column(String(100))
     name_en: Mapped[str] = mapped_column(String(100))
     franchise_id: Mapped[str] = mapped_column(ForeignKey("franchises.id"), index=True)
@@ -79,6 +86,8 @@ class Banner(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text)
+    code: Mapped[str | None] = mapped_column(String(40), unique=True)
+    drop_rates: Mapped[dict | None] = mapped_column(JSONB)
     weights: Mapped[list] = mapped_column(JSONB)
     single_cost: Mapped[int] = mapped_column(Integer)
     ten_cost: Mapped[int] = mapped_column(Integer)
@@ -102,8 +111,18 @@ class Summon(Base):
     banner_id: Mapped[int] = mapped_column(ForeignKey("banners.id"))
     key: Mapped[str] = mapped_column(String(64))
     count: Mapped[int] = mapped_column(Integer)
+    total_cost: Mapped[int | None] = mapped_column(Integer)
+    balance_after: Mapped[int | None] = mapped_column(Integer)
+    telegram_update_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    __table_args__ = (UniqueConstraint("player_id", "key"), CheckConstraint("count IN (1,10)"))
+    __table_args__ = (
+        UniqueConstraint("player_id", "key"),
+        UniqueConstraint("player_id", "telegram_update_id"),
+        CheckConstraint("count IN (1,10)"),
+        CheckConstraint("total_cost IS NULL OR total_cost > 0"),
+        CheckConstraint("balance_after IS NULL OR balance_after >= 0"),
+        Index("ix_summons_player_created", "player_id", "created_at"),
+    )
 
 
 class OwnedCard(Base):
@@ -113,6 +132,8 @@ class OwnedCard(Base):
     character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), index=True)
     favorite: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_owned_cards_player_character", "player_id", "character_id"),)
 
 
 class SummonResult(Base):
