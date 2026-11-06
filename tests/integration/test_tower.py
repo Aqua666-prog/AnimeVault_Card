@@ -60,9 +60,9 @@ async def test_training_xp_spent_without_changing_coins_or_account_xp(fate_game)
         assert upgrades[0].coin_cost == 0 and upgrades[0].xp_cost == 2
         assert (
             await session.scalar(
-                select(func.count()).select_from(CurrencyTransaction).where(
-                    CurrencyTransaction.kind == "card_level"
-                )
+                select(func.count())
+                .select_from(CurrencyTransaction)
+                .where(CurrencyTransaction.kind == "card_level")
             )
             == 0
         )
@@ -122,9 +122,9 @@ async def test_tower_clear_replay_idempotence_and_persistence(fate_game):
         assert await session.scalar(select(func.count()).select_from(TowerRun)) == 2
         assert (
             await session.scalar(
-                select(func.count()).select_from(CurrencyTransaction).where(
-                    CurrencyTransaction.kind == "tower"
-                )
+                select(func.count())
+                .select_from(CurrencyTransaction)
+                .where(CurrencyTransaction.kind == "tower")
             )
             == 2
         )

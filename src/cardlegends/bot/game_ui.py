@@ -242,7 +242,6 @@ def create_game_router(game, players):
             f"Архивных экземпляров: {p['archived']}\nПризывов: {p['summons']}",
         )
 
-
     async def team(event):
         members = await game.team(event.from_user.id)
         slots = {slot: (card, character) for slot, card, character in members}
@@ -257,9 +256,7 @@ def create_game_router(game, players):
                 hp += stats["hp"]
                 atk += stats["atk"]
                 defense += stats["def"]
-                text += (
-                    f"\n{slot}. {h(character.name_en)} — Ур. {card.level}, NP {card.np}/5"
-                )
+                text += f"\n{slot}. {h(character.name_en)} — Ур. {card.level}, NP {card.np}/5"
                 rows.append(
                     [
                         (f"Изменить слот {slot}", f"fc:ts:{slot}:0"),
@@ -337,9 +334,7 @@ def create_game_router(game, players):
         await display(event, text, keyboard(rows + [back()]))
 
     async def tower_fight(event, floor, key):
-        run, highest, balance, training_xp = await game.fight_tower(
-            event.from_user.id, floor, key
-        )
+        run, highest, balance, training_xp = await game.fight_tower(event.from_user.id, floor, key)
         title = "ПОБЕДА!" if run.victory else "ПОРАЖЕНИЕ"
         await display(
             event,
@@ -587,8 +582,16 @@ def create_game_router(game, players):
 
     @router.message(
         Command(
-            "summon", "collection", "catalog", "profile", "rates",
-            "help", "history", "daily", "team", "tower",
+            "summon",
+            "collection",
+            "catalog",
+            "profile",
+            "rates",
+            "help",
+            "history",
+            "daily",
+            "team",
+            "tower",
         )
     )
     async def command(message):

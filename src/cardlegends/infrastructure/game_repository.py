@@ -617,7 +617,6 @@ class GameService:
                 raise GameError("Баннер не инициализирован. Обратитесь к администратору.")
             return banner
 
-
     async def team(self, user):
         """Return the current three-slot squad; each slot refers to an exact owned copy."""
         async with self.sessions() as session:
@@ -629,17 +628,19 @@ class GameService:
     @staticmethod
     async def _team_rows(session, player_id):
         return list(
-            (await session.execute(
-                select(SquadSlot.slot, OwnedCard, Character)
-                .join(OwnedCard, OwnedCard.id == SquadSlot.card_id)
-                .join(Character, Character.id == OwnedCard.character_id)
-                .where(
-                    SquadSlot.player_id == player_id,
-                    OwnedCard.consumed_at.is_(None),
-                    Character.code.in_(CARD_IDS),
+            (
+                await session.execute(
+                    select(SquadSlot.slot, OwnedCard, Character)
+                    .join(OwnedCard, OwnedCard.id == SquadSlot.card_id)
+                    .join(Character, Character.id == OwnedCard.character_id)
+                    .where(
+                        SquadSlot.player_id == player_id,
+                        OwnedCard.consumed_at.is_(None),
+                        Character.code.in_(CARD_IDS),
+                    )
+                    .order_by(SquadSlot.slot)
                 )
-                .order_by(SquadSlot.slot)
-            )).all()
+            ).all()
         )
 
     async def team_candidates(self, user, page=0):
@@ -660,14 +661,18 @@ class GameService:
             )
             total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
             page = min(page, max(0, (total - 1) // 8))
-            rows = (await session.execute(
-                stmt.order_by(
-                    OwnedCard.level.desc(),
-                    OwnedCard.np.desc(),
-                    OwnedCard.created_at,
-                    OwnedCard.id,
-                ).offset(8 * page).limit(8)
-            )).all()
+            rows = (
+                await session.execute(
+                    stmt.order_by(
+                        OwnedCard.level.desc(),
+                        OwnedCard.np.desc(),
+                        OwnedCard.created_at,
+                        OwnedCard.id,
+                    )
+                    .offset(8 * page)
+                    .limit(8)
+                )
+            ).all()
             return list(rows), total, page
 
     async def assign_team(self, user, slot, card_id):
@@ -713,9 +718,7 @@ class GameService:
         async with self.sessions.begin() as session:
             player, _ = await self.wallet(session, user)
             await session.execute(
-                delete(SquadSlot).where(
-                    SquadSlot.player_id == player.id, SquadSlot.slot == slot
-                )
+                delete(SquadSlot).where(SquadSlot.player_id == player.id, SquadSlot.slot == slot)
             )
 
     async def tower_info(self, user):
@@ -751,9 +754,7 @@ class GameService:
                     .on_conflict_do_nothing()
                 )
             progress = await session.scalar(
-                select(TowerProgress)
-                .where(TowerProgress.player_id == player.id)
-                .with_for_update()
+                select(TowerProgress).where(TowerProgress.player_id == player.id).with_for_update()
             )
             if floor > progress.highest_cleared + 1:
                 raise GameError("Этаж ещё не открыт. Пройдите предыдущий.")
