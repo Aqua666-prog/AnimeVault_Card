@@ -61,6 +61,9 @@ class Character(Base):
     collection_name: Mapped[str | None] = mapped_column(String(100))
     image_path: Mapped[str | None] = mapped_column(Text)
     limited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    base_hp: Mapped[int] = mapped_column(Integer, nullable=False, default=1000, server_default="1000")
+    base_atk: Mapped[int] = mapped_column(Integer, nullable=False, default=100, server_default="100")
+    base_def: Mapped[int] = mapped_column(Integer, nullable=False, default=100, server_default="100")
     name_ru: Mapped[str] = mapped_column(String(100))
     name_en: Mapped[str] = mapped_column(String(100))
     franchise_id: Mapped[str] = mapped_column(ForeignKey("franchises.id"), index=True)
@@ -131,9 +134,37 @@ class OwnedCard(Base):
     player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), index=True)
     character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), index=True)
     favorite: Mapped[bool] = mapped_column(Boolean, default=False)
+    level: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    np: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (Index("ix_owned_cards_player_character", "player_id", "character_id"),)
+    __table_args__ = (
+        Index("ix_owned_cards_player_character", "player_id", "character_id"),
+        CheckConstraint("level BETWEEN 1 AND 100", name="ck_owned_cards_level"),
+        CheckConstraint("np BETWEEN 1 AND 5", name="ck_owned_cards_np"),
+    )
+
+
+class CardUpgrade(Base):
+    """Idempotent, auditable level-up and fusion operations."""
+
+    __tablename__ = "card_upgrades"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), nullable=False)
+    target_card_id: Mapped[UUID] = mapped_column(ForeignKey("owned_cards.id"), nullable=False)
+    source_card_id: Mapped[UUID | None] = mapped_column(ForeignKey("owned_cards.id"))
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    steps: Mapped[int] = mapped_column(Integer, nullable=False)
+    coin_cost: Mapped[int] = mapped_column(Integer, nullable=False)
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (
+        UniqueConstraint("player_id", "key", name="uq_card_upgrades_player_key"),
+        CheckConstraint("kind IN ('level','np')", name="ck_card_upgrades_kind"),
+        CheckConstraint("steps BETWEEN 1 AND 10", name="ck_card_upgrades_steps"),
+        CheckConstraint("coin_cost >= 0", name="ck_card_upgrades_cost"),
+    )
 
 
 class SummonResult(Base):
