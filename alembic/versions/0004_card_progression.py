@@ -33,14 +33,8 @@ def upgrade():
         ("AV-L001", 1450, 185, 100),
     ):
         op.execute(
-            sa.text(
-                "UPDATE characters SET base_hp=:hp, base_atk=:atk, base_def=:def "
-                "WHERE code=:code"
-            ).bindparams(hp=hp, atk=atk, def_=defense, code=code).text
-            .replace(":def", str(defense))
-            .replace(":hp", str(hp))
-            .replace(":atk", str(atk))
-            .replace(":code", f"'{code}'")
+            f"UPDATE characters SET base_hp={hp}, base_atk={atk}, "
+            f"base_def={defense} WHERE code='{code}'"
         )
     op.create_table(
         "card_upgrades",
