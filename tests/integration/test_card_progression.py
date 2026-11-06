@@ -1,8 +1,10 @@
 """Per-instance card progression preserves pre-existing summons and inventory."""
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from aiogram.types import CallbackQuery, Chat, Message, Update, User
 from sqlalchemy import func, select
 
 from cardlegends.application.players import PlayerService
@@ -11,7 +13,24 @@ from cardlegends.domain.game import GameError
 from cardlegends.domain.progression import combat_stats
 from cardlegends.infrastructure.game_models import CardUpgrade, CurrencyTransaction, OwnedCard
 from cardlegends.infrastructure.players import PostgresPlayerRepository
-from tests.integration.test_fate_flows import callback_update
+
+def callback_update(data, update_id=1):
+    return Update(
+        update_id=update_id,
+        callback_query=CallbackQuery(
+            id=str(update_id),
+            from_user=User(id=42, is_bot=False, first_name="Тест"),
+            chat_instance="test",
+            data=data,
+            message=Message(
+                message_id=1,
+                date=datetime.now(UTC),
+                chat=Chat(id=42, type="private"),
+                text="menu",
+            ),
+        ),
+    )
+
 
 pytestmark = pytest.mark.integration
 
