@@ -57,6 +57,13 @@ def coins(value):
     return format(value, ",").replace(",", " ")
 
 
+def meter(value, maximum, width=10):
+    maximum = max(1, int(maximum))
+    value = max(0, min(int(value), maximum))
+    filled = round(width * value / maximum)
+    return f"{'🟩' * filled}{'⬛' * (width - filled)}"
+
+
 def rarity(character):
     return "UR Limited" if character.limited else character.rarity
 
@@ -343,25 +350,29 @@ def create_game_router(game, players):
         report = run.report or {}
         logs = report.get("log", [])
         excerpt = logs if len(logs) <= 6 else logs[:3] + ["…"] + logs[-3:]
+        enemy_hp = report.get('stats', {}).get('hp', 1)
+        team_max_hp = sum(x.get('stats', {}).get('hp', 0) for x in report.get('team', [])) or 1
         details = (
-            f"\n{h(report.get('enemy', 'Архивный противник'))}"
-            f"\nПротивник: HP {report.get('stats', {}).get('hp', '—')} "
-            f"· ATK {report.get('stats', {}).get('atk', '—')} "
-            f"· DEF {report.get('stats', {}).get('def', '—')}"
-            "\nОтряд: "
+            f"\n\n👹 <b>{h(report.get('enemy', 'Архивный противник'))}</b>"
+            f"\n❤️ HP противника: {coins(max(0, enemy_hp - run.damage_dealt))}/{coins(enemy_hp)}"
+            f"\n{meter(enemy_hp - run.damage_dealt, enemy_hp)}"
+            f"\n🛡 HP отряда: {coins(run.remaining_hp)}/{coins(team_max_hp)}"
+            f"\n{meter(run.remaining_hp, team_max_hp)}"
+            f"\n⚔ ATK {coins(report.get('stats', {}).get('atk', 0))} · DEF {coins(report.get('stats', {}).get('def', 0))}"
+            "\n👥 Отряд: "
             + ", ".join(h(x["name"]) for x in report.get("team", []))
-            + f"\nНанесено: {report.get('dealt', '—')} · Получено: {report.get('received', '—')}\n"
+            + f"\n💥 Нанесено: {coins(run.damage_dealt)} · Получено: {coins(run.damage_received)}\n"
             + "\n".join(h(line) for line in excerpt)
         )
         if run.first_clear:
             details += "\n◆ Новый этаж открыт. Проверьте достижения и награды."
         await display(
             event,
-            f"<b>Бесконечная башня · этаж {run.floor}: {title}</b>\n"
-            f"Раундов: {run.turns}\nОставшееся HP отряда: {run.remaining_hp}\n"
-            f"Награда: +{coins(run.coins)} монет, +{coins(run.xp)} EXP\n"
-            f"Баланс: {coins(balance)} монет, {coins(training_xp)} EXP\n"
-            f"Наивысший пройденный этаж: {highest}" + details,
+            f"<b>🏰 Башня · этаж {run.floor}: {title}</b>\n"
+            f"⚔ Раундов: <b>{run.turns}</b>\n"
+            f"🎁 Награда: <b>+{coins(run.coins)} Coins</b> · <b>+{coins(run.xp)} EXP</b>\n"
+            f"🪙 Баланс: {coins(balance)} · 💠 EXP: {coins(training_xp)}\n"
+            f"🏆 Рекорд: этаж {highest}" + details,
             keyboard(
                 [
                     [("Продолжить башню", "fc:tower")],
