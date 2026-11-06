@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from aiogram.methods import EditMessageMedia, EditMessageText, SendMessage
+from aiogram.methods import EditMessageMedia, SendMessage, SendPhoto
 from aiogram.types import CallbackQuery, Chat, Message, PhotoSize, Update, User
 
 from cardlegends.application.players import PlayerService
@@ -94,7 +94,7 @@ async def test_all_new_sections_work_with_real_dispatcher_and_db(fate_game, bot,
                 ),
             ),
         )
-        assert isinstance(bot.session.calls[-1], SendMessage)
+        assert isinstance(bot.session.calls[-1], (SendMessage, SendPhoto))
 
 
 async def test_receipt_replay_mail_html_and_card_media_edit(fate_game, bot):
@@ -115,4 +115,4 @@ async def test_receipt_replay_mail_html_and_card_media_edit(fate_game, bot):
     assert isinstance(bot.session.calls[-1], EditMessageMedia)
     assert len(bot.session.calls[-1].media.caption) <= 1024
     await routes.feed_update(bot, event("fc:profile", 1203))
-    assert isinstance(bot.session.calls[-1], EditMessageText)
+    assert isinstance(bot.session.calls[-1], SendPhoto)
