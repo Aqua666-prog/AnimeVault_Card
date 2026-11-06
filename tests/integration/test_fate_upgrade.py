@@ -39,7 +39,10 @@ async def test_populated_v020_upgrade_keeps_all_original_fields_and_archived_fun
     sid, card_id, art_id = uuid4(), uuid4(), uuid4()
     async with engine.begin() as c:
         await c.execute(
-            text("INSERT INTO players(id, telegram_id, display_name) VALUES (:id, 42, 'Старый игрок')"),
+            text(
+                "INSERT INTO players(id, telegram_id, display_name) "
+                "VALUES (:id, 42, 'Старый игрок')"
+            ),
             {"id": player.id},
         )
         await c.execute(
