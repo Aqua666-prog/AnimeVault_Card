@@ -350,8 +350,8 @@ def create_game_router(game, players):
         report = run.report or {}
         logs = report.get("log", [])
         excerpt = logs if len(logs) <= 6 else logs[:3] + ["…"] + logs[-3:]
-        enemy_hp = report.get('stats', {}).get('hp', 1)
-        team_max_hp = sum(x.get('stats', {}).get('hp', 0) for x in report.get('team', [])) or 1
+        enemy_hp = report.get("stats", {}).get("hp", 1)
+        team_max_hp = sum(x.get("stats", {}).get("hp", 0) for x in report.get("team", [])) or 1
         details = (
             f"\n\n👹 <b>{h(report.get('enemy', 'Архивный противник'))}</b>"
             f"\n❤️ HP противника: "
