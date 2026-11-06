@@ -405,7 +405,9 @@ class GameService:
                         OwnedCard.level.desc(),
                         OwnedCard.created_at,
                         OwnedCard.id,
-                    ).offset(page * 8).limit(8)
+                    )
+                    .offset(page * 8)
+                    .limit(8)
                 )
             )
             return cards, total, page
