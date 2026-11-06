@@ -18,6 +18,7 @@ from aiogram.types import (
 
 from cardlegends.domain.fate import BANNER_ID, BANNER_NAME, CARD_IDS, DROP_RATES
 from cardlegends.domain.game import GameError
+from cardlegends.domain.progression import MAX_LEVEL, MAX_NP, combat_stats, upgrade_cost
 from cardlegends.infrastructure.diagnostics import log_failure
 from cardlegends.infrastructure.fate_images import CardImageError, check_card_images, load_card_png
 
@@ -83,7 +84,8 @@ def card_text(c):
         f"<b>{h(c.name_en)}</b>\n{h(c.code)} • {h(c.collection_name)}\n"
         f"Класс: {h(c.card_class)}\nРедкость: {rarity(c)}\n{limited}\n"
         f"Лимитированная: {'да' if c.limited else 'нет'}\n"
-        f"Шанс: {DROP_RATES[c.code] // 100}%"
+        f"Шанс: {DROP_RATES[c.code] // 100}%\n"
+        f"Базовые статы (Ур. 1, NP 1): HP {c.base_hp} • ATK {c.base_atk} • DEF {c.base_def}"
     )
 
 
@@ -144,7 +146,31 @@ async def show_card(event, game, character, card=None, copies=0):
         rows = []
         caption = card_text(character)
         if card:
-            caption += f"\nКопий в коллекции: {copies}"
+            stats = combat_stats(character, card)
+            caption += (
+                f"\n\n<b>Уровень {card.level}/{MAX_LEVEL} • NP {card.np}/{MAX_NP}</b>"
+                f"\nHP: {stats['hp']} • ATK: {stats['atk']} • DEF: {stats['def']}"
+                f"\nАктивных копий: {copies}"
+            )
+            if card.level < MAX_LEVEL:
+                new_key = uuid4().hex[:16]
+                cost = upgrade_cost(card.level, 1)
+                rows.append(
+                    [(f"↑ Уровень +1 — {coins(cost)} монет",
+                      f"fc:l:{card.id.hex}:1:{new_key}")]
+                )
+            if card.level <= MAX_LEVEL - 10:
+                new_key = uuid4().hex[:16]
+                cost = upgrade_cost(card.level, 10)
+                rows.append(
+                    [(f"↑ Уровень +10 — {coins(cost)} монет",
+                      f"fc:l:{card.id.hex}:10:{new_key}")]
+                )
+            if card.np < MAX_NP:
+                rows.append(
+                    [("Слить дубликат → NP +1", f"fc:n:{card.id.hex}:{uuid4().hex[:16]}")]
+                )
+            rows.append([("Все экземпляры персонажа", f"fc:copies:{character.code}:0")])
             rows.append(
                 [
                     (
@@ -258,6 +284,36 @@ def create_game_router(game, players):
             )
         text += f"\nСобрано: {sum(q > 0 for _, q, *_ in entries)}/4"
         await display(event, text, keyboard(rows + [back()]))
+
+    async def copies(event, code, page):
+        character = await game.fate_character(code)
+        cards, total, page = await game.copies(event.from_user.id, code, page)
+        if not cards:
+            raise GameError("Вы пока не получили эту карточку.")
+        rows = [
+            [
+                (
+                    f"{'★ ' if item.favorite else ''}Ур. {item.level} • NP {item.np}/5",
+                    f"fc:card:{item.id.hex}",
+                )
+            ]
+            for item in cards
+        ]
+        if total > 8:
+            rows.append(
+                [
+                    ("←", f"fc:copies:{code}:{max(0, page - 1)}"),
+                    ("→", f"fc:copies:{code}:{min((total - 1) // 8, page + 1)}"),
+                ]
+            )
+        rows.append(("Назад в коллекцию", "fc:collection"))
+        await display(
+            event,
+            f"<b>{h(character.name_en)} — экземпляры</b>\n"
+            f"Всего: {total} • Страница {page + 1}/{max(1, (total + 7) // 8)}\n"
+            "Выберите экземпляр для прокачки или слияния.",
+            keyboard([[row] if isinstance(row, tuple) else row for row in rows]),
+        )
 
     async def catalog(event, page):
         codes = list(CARD_IDS)
@@ -393,6 +449,9 @@ def create_game_router(game, players):
             "/summon — призыв\n/collection — моя коллекция\n/catalog — каталог\n"
             "/profile — профиль\n/rates — точные шансы\n/history — история\n"
             "/daily — ежедневная награда 300 монет (00:00 UTC)\n/help — помощь\n"
+            "Уровень карточки: 1–100, +1 или +10 за монеты (2 × текущий уровень).\n"
+            "NP: 1–5, слияние с чистым дубликатом Ур. 1/NP 1 того же героя.\n"
+            "HP/ATK/DEF растут от уровня и NP. Избранные копии не расходуются.\n"
             "Новый аккаунт: 1 000 AnimeVault Coins один раз. Реальных платежей нет.\n"
             "Старые экземпляры доступны в архиве, баланс и прогресс сохраняются.",
         )
@@ -500,6 +559,16 @@ def create_game_router(game, players):
                 else:
                     c = await game.fate_character(parts[2])
                     await send_png(query, game, c)
+            elif action == "copies" and len(parts) == 4:
+                await copies(query, parts[2], int(parts[3]))
+            elif action == "l" and len(parts) == 5:
+                await game.level_up(query.from_user.id, parts[2], int(parts[3]), parts[4])
+                card, c, quantity = await game.card(query.from_user.id, parts[2])
+                await show_card(query, game, c, card, quantity)
+            elif action == "n" and len(parts) == 4:
+                await game.fuse_np(query.from_user.id, parts[2], parts[3])
+                card, c, quantity = await game.card(query.from_user.id, parts[2])
+                await show_card(query, game, c, card, quantity)
             elif action == "archive" and len(parts) == 3:
                 await archive(query, int(parts[2]))
             elif action == "card" and len(parts) == 3:
