@@ -18,6 +18,7 @@ from aiogram.types import (
     Message,
 )
 
+from cardlegends.bot.visuals import battle_image
 from cardlegends.domain.fate import BANNER_ID, BANNER_NAME, CARD_IDS, DROP_RATES
 from cardlegends.domain.game import GameError
 from cardlegends.domain.progression import MAX_LEVEL, MAX_NP, combat_stats, power, upgrade_cost
@@ -39,18 +40,18 @@ def keyboard(rows):
 def menu():
     return keyboard(
         [
-            [("◈ Профиль", "fc:profile"), ("▣ Моя коллекция", "r2:inv:0:power:all:all")],
-            [("✦ Призыв", "fc:summon"), ("⚔ Мой отряд", "fc:team")],
-            [("♜ Бесконечная башня", "fc:tower"), ("Активности", "r2:activities")],
-            [("Задания", "r2:q:daily:0"), ("Достижения", "r2:q:achievements:0")],
-            [("Награды", "r2:rewards:all:0"), ("Игровая почта", "r2:rewards:mail:0")],
-            [("Помощь", "fc:help"), ("Календарь", "r2:calendar")],
+            [("👑 Профиль", "fc:profile"), ("🃏 Коллекция", "r2:inv:0:power:all:all")],
+            [("✨ Призыв", "fc:summon"), ("⚔️ Отряд", "fc:team")],
+            [("🏰 Башня", "fc:tower"), ("🗺️ Активности", "r2:activities")],
+            [("📜 Задания", "r2:q:daily:0"), ("🏆 Достижения", "r2:q:achievements:0")],
+            [("🎁 Награды", "r2:rewards:all:0"), ("✉️ Почта", "r2:rewards:mail:0")],
+            [("❔ Помощь", "fc:help"), ("📅 Календарь", "r2:calendar")],
         ]
     )
 
 
 def back():
-    return [("Главное меню", "fc:home")]
+    return [("🏠 Главное меню", "fc:home")]
 
 
 def coins(value):
@@ -189,7 +190,9 @@ async def show_card(event, game, character, card=None, copies=0, notice=None):
             stats = combat_stats(character, card)
             caption += (
                 f"\n\n<b>Уровень {card.level}/{MAX_LEVEL} • NP {card.np}/{MAX_NP}</b>"
-                f"\nHP: {stats['hp']} • ATK: {stats['atk']} • DEF: {stats['def']}"
+                f"\n⭐ {meter(card.level, MAX_LEVEL)}"
+                f"\n💎 NP {'◆' * card.np}{'◇' * (MAX_NP - card.np)}"
+                f"\n❤️ HP: {stats['hp']} • ⚔️ ATK: {stats['atk']} • 🛡️ DEF: {stats['def']}"
                 f"\nАктивных копий: {copies}"
             )
             await game.tutorial(event.from_user.id, "card")
@@ -307,7 +310,14 @@ def create_game_router(game, players):
         rows += [[(f"Развить: {c.name_en}", f"fc:card:{card.id.hex}")] for _, card, c in members]
         text += "\nВ бою участвуют только назначенные экземпляры. Они защищены от слияния."
         rows.append([("В башню", "fc:tower")])
-        await display(event, text, keyboard(rows + [back()]))
+        await rpg.art(
+            event,
+            text,
+            keyboard(rows + [back()]),
+            "team",
+            "МОЙ ОТРЯД",
+            "Три героя — одна цель",
+        )
 
     async def team_pick(event, slot, page):
         if slot not in (1, 2, 3):
@@ -350,23 +360,35 @@ def create_game_router(game, players):
         report = run.report or {}
         logs = report.get("log", [])
         excerpt = logs if len(logs) <= 6 else logs[:3] + ["…"] + logs[-3:]
-        enemy_hp = report.get('stats', {}).get('hp', 1)
-        team_max_hp = sum(x.get('stats', {}).get('hp', 0) for x in report.get('team', [])) or 1
+        enemy_hp = report.get("stats", {}).get("hp", 1)
+        team_max_hp = sum(x.get("stats", {}).get("hp", 0) for x in report.get("team", [])) or 1
         details = (
             f"\n\n👹 <b>{h(report.get('enemy', 'Архивный противник'))}</b>"
-            f"\n❤️ HP противника: {coins(max(0, enemy_hp - report.get('dealt', 0)))}/{coins(enemy_hp)}"
+            f"\n❤️ HP противника: {coins(max(0, enemy_hp - report.get('dealt', 0)))}"
+            f"/{coins(enemy_hp)}"
             f"\n{meter(enemy_hp - report.get('dealt', 0), enemy_hp)}"
             f"\n🛡 HP отряда: {coins(run.remaining_hp)}/{coins(team_max_hp)}"
             f"\n{meter(run.remaining_hp, team_max_hp)}"
-            f"\n⚔ ATK {coins(report.get('stats', {}).get('atk', 0))} · DEF {coins(report.get('stats', {}).get('def', 0))}"
+            f"\n⚔ ATK {coins(report.get('stats', {}).get('atk', 0))}"
+            f" · DEF {coins(report.get('stats', {}).get('def', 0))}"
             "\n👥 Отряд: "
             + ", ".join(h(x["name"]) for x in report.get("team", []))
-            + f"\n💥 Нанесено: {coins(report.get('dealt', 0))} · Получено: {coins(report.get('received', 0))}\n"
+            + f"\n💥 Нанесено: {coins(report.get('dealt', 0))}"
+            + f" · Получено: {coins(report.get('received', 0))}\n"
             + "\n".join(h(line) for line in excerpt)
         )
         if run.first_clear:
             details += "\n◆ Новый этаж открыт. Проверьте достижения и награды."
-        await display(
+        poster = battle_image(
+            run.floor,
+            str(report.get("enemy", "Противник")),
+            max(1, int(enemy_hp)),
+            0 if run.victory else None,
+            max(1, int(team_max_hp)),
+            int(run.remaining_hp),
+            run.victory,
+        )
+        await rpg.art(
             event,
             f"<b>🏰 Башня · этаж {run.floor}: {title}</b>\n"
             f"⚔ Раундов: <b>{run.turns}</b>\n"
@@ -384,6 +406,10 @@ def create_game_router(game, players):
                     back(),
                 ]
             ),
+            "victory" if run.victory else "defeat",
+            "ПОБЕДА" if run.victory else "ПОРАЖЕНИЕ",
+            "Боевой отчёт",
+            poster,
         )
 
     async def rates(event):
@@ -402,7 +428,7 @@ def create_game_router(game, players):
     async def summon_menu(event):
         banner = await game.banner_info()
         issues = await asyncio.to_thread(check_card_images, game.cards_dir)
-        await display(
+        await rpg.art(
             event,
             f"<b>{h(banner.name)}</b>\n"
             "Artoria 33% • Morgan 33% • Enkidu 33% • Kama &amp; Ishtar 1%\n"
@@ -420,6 +446,9 @@ def create_game_router(game, players):
                     back(),
                 ]
             ),
+            "summon",
+            "ВРАТА ПРИЗЫВА",
+            "FATE COLLECTION",
         )
 
     async def collection(event):

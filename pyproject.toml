@@ -41,3 +41,4 @@ select = ["E", "F", "I", "UP", "B", "ASYNC"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "assets/cards" = "cardlegends/assets/cards"
+"assets/ui" = "cardlegends/assets/ui"

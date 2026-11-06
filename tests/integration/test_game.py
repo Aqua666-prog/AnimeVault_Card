@@ -170,7 +170,8 @@ async def test_real_game_router_navigation_callbacks_and_privacy(game, bot):
         text="/start",
     )
     await dispatcher.feed_update(bot, Update(update_id=1, message=message))
-    assert "ANIMEVAULT" in bot.session.calls[-1].text
+    first = bot.session.calls[-1]
+    assert "ANIMEVAULT" in (getattr(first, "caption", None) or getattr(first, "text", ""))
     for index, data in enumerate(
         [
             "av:summon",

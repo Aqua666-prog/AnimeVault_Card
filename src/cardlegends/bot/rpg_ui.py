@@ -3,6 +3,7 @@
 from html import escape as h
 
 from cardlegends.bot.game_ui import back, coins, display, keyboard, menu, send_png
+from cardlegends.bot.visuals import battle_image, show_art
 from cardlegends.domain.activities import ACHIEVEMENTS, progress_bar
 from cardlegends.domain.progression import combat_stats, power
 from cardlegends.domain.tower import battle, enemy_name, enemy_stats
@@ -19,6 +20,12 @@ def stat_bar(value, maximum, width=12):
 class RPGScreens:
     def __init__(self, game):
         self.game = game
+
+    async def art(self, event, text, markup, scene, title, subtitle, data=None):
+        if not await show_art(
+            event, text, markup, scene=scene, title=title, subtitle=subtitle, data=data
+        ):
+            await display(event, text, markup)
 
     async def home(self, event):
         user = event.from_user.id
@@ -54,14 +61,15 @@ class RPGScreens:
             if card
             else "Карточек пока нет"
         )
-        await display(
+        await self.art(
             event,
             f"<b>👑 ПРОФИЛЬ ИГРОКА</b>\n━━━━━━━━━━━━━━━━━━\n"
             f"🧑 {h(p['player'].display_name)}  ·  <b>Ранг {p['level']}</b>\n"
             f"🆔 <code>{event.from_user.id}</code>\n\n"
             f"<b>Прогресс аккаунта</b>\n{stat_bar(p['xp'] % 100, 100)}  {p['xp'] % 100}/100 EXP\n"
             f"До нового ранга: <b>{100 - p['xp'] % 100}</b> EXP\n\n"
-            f"🪙 Coins: <b>{coins(p['balance'])}</b>\n💠 EXP карт: <b>{coins(p['training_xp'])}</b>\n"
+            f"🪙 Coins: <b>{coins(p['balance'])}</b>\n"
+            f"💠 EXP карт: <b>{coins(p['training_xp'])}</b>\n"
             f"📚 Коллекция: <b>{p['unique']}/4</b> героев · {p['total']} экземпляров\n"
             f"🗃 Архив: {p['archived']} · Всего копий: {p['total_all']}\n\n"
             f"⚔ <b>Сильнейшая карта</b>\n{strongest}\n\n"
@@ -70,6 +78,9 @@ class RPGScreens:
             f"🎖 Достижения: {p['achievements']}/{len(ACHIEVEMENTS)}\n"
             f"📅 В игре с {p['player'].created_at:%d.%m.%Y} UTC",
             keyboard([[("Коллекция", "r2:inv:0:power:all:all"), ("Мой отряд", "fc:team")], back()]),
+            "profile",
+            "ЗАЛ СЛАВЫ",
+            "Твой путь начинается здесь",
         )
 
     async def inventory(self, event, page=0, sort="power", filter_="all", value="all"):
@@ -315,7 +326,7 @@ class RPGScreens:
         await display(event, text, keyboard(rows))
 
     async def activities(self, event):
-        await display(
+        await self.art(
             event,
             "<b>🎮 ЦЕНТР АКТИВНОСТЕЙ</b>\n━━━━━━━━━━━━━━━━━━\n"
             "🏰 <b>Бесконечная башня</b> — сражайся, поднимайся выше и добывай Coins/EXP.\n\n"
@@ -331,6 +342,9 @@ class RPGScreens:
                     back(),
                 ]
             ),
+            "activities",
+            "КАРТА ПРИКЛЮЧЕНИЙ",
+            "Выбери следующую цель",
         )
 
     async def tower(self, event, floor=None):
@@ -382,7 +396,17 @@ class RPGScreens:
             [("Мой отряд", "fc:team"), ("Награды этажей", "r2:rewards:all:0")],
             back(),
         ]
-        await display(event, text, keyboard(rows))
+        team_hp = sum(fighter["hp"] for fighter in fighters)
+        poster = battle_image(floor, enemy_name(floor), enemy["hp"], enemy["hp"], team_hp, team_hp)
+        await self.art(
+            event,
+            text,
+            keyboard(rows),
+            "tower",
+            "БЕСКОНЕЧНАЯ БАШНЯ",
+            "Покори следующий этаж",
+            poster,
+        )
 
     async def handle(self, event, parts):
         action = parts[1] if len(parts) > 1 else ""

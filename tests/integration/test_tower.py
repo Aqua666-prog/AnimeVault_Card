@@ -136,11 +136,11 @@ async def test_telegram_team_tower_callbacks_with_real_db(fate_game, bot):
     card, _ = (await game.results(42, sid))[0]
     routes = create_dispatcher(PlayerService(PostgresPlayerRepository(game.sessions)), game)
     await routes.feed_update(bot, callback("fc:team", 400))
-    assert "Свободный слот" in bot.session.calls[-1].text
+    assert "Свободный слот" in bot.session.calls[-1].caption
     await routes.feed_update(bot, callback("fc:ts:1:0", 401))
     assert "Выберите карту" in bot.session.calls[-1].text
     await routes.feed_update(bot, callback(f"fc:ta:1:{card.id.hex}", 402))
-    assert "Artoria Pendragon" in bot.session.calls[-1].text
+    assert "Artoria Pendragon" in bot.session.calls[-1].caption
     await routes.feed_update(bot, callback("fc:tower", 403))
     markup = bot.session.calls[-1].reply_markup
     fight = next(
@@ -151,6 +151,7 @@ async def test_telegram_team_tower_callbacks_with_real_db(fate_game, bot):
     )
     assert len(fight.encode()) <= 64
     await routes.feed_update(bot, callback(fight, 404))
-    assert "ПОБЕДА!" in bot.session.calls[-1].text
+    last = bot.session.calls[-1]
+    assert "ПОБЕДА!" in (getattr(last, "caption", None) or getattr(last, "text", ""))
     await routes.feed_update(bot, callback(fight, 405))
     assert (await game.profile(42))["balance"] == 1005
