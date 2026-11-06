@@ -19,6 +19,10 @@ async def grant_runtime_permissions() -> None:
     try:
         async with engine.begin() as connection:
             for statement in (
+                "GRANT SELECT, INSERT, UPDATE ON card_upgrades, tower_progress, tower_runs, "
+                "reward_grants, player_journeys TO cardlegends_app",
+                "GRANT SELECT, INSERT ON player_visits TO cardlegends_app",
+                "GRANT SELECT, INSERT, UPDATE, DELETE ON squad_slots TO cardlegends_app",
                 "GRANT SELECT, INSERT, UPDATE ON players, wallets, owned_cards, render_cache "
                 "TO cardlegends_app",
                 "GRANT SELECT, INSERT ON summons, summon_results, "

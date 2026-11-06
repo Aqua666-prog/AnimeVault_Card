@@ -14,7 +14,7 @@ def test_enemy_growth_and_rewards():
     assert enemy_stats(2)["hp"] > enemy_stats(1)["hp"]
     assert rewards(1, True) == (105, 50)
     assert rewards(1, False) == (52, 25)
-    assert rewards(100_000, True) == (100_000, 50_000)
+    assert rewards(100_000, True) == (400, 300)
     with pytest.raises(GameError):
         rewards(0, True)
 

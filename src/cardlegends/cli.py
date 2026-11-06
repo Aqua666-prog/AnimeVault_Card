@@ -32,7 +32,12 @@ async def run(args):
     engine, sessions = create_database(settings.database_url.get_secret_value())
     admin = ArtAdmin(sessions)
     try:
-        if args.command == "seed":
+        if args.command == "gift":
+            from cardlegends.infrastructure.game_repository import GameService
+
+            await GameService(sessions).gift(args.user, args.key, args.reason, args.coins, args.xp)
+            print("Подарок сохранён. Повтор с тем же ключом не создаёт копию.")
+        elif args.command == "seed":
             await seed(sessions)
         elif args.command == "search":
             source = Danbooru()
@@ -138,6 +143,12 @@ async def run(args):
 def main():
     parser = argparse.ArgumentParser(description="AnimeVault Cards: каталог и разрешённые арты")
     commands = parser.add_subparsers(dest="command", required=True)
+    gift = commands.add_parser("gift", help="Подарок в игровую почту (оператор с доступом к БД)")
+    gift.add_argument("user", type=int)
+    gift.add_argument("key")
+    gift.add_argument("reason")
+    gift.add_argument("--coins", type=int, default=0)
+    gift.add_argument("--xp", type=int, default=0)
     commands.add_parser("seed")
     commands.add_parser("check-cards")
     search = commands.add_parser("search")

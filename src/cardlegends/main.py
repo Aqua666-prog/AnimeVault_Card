@@ -70,6 +70,17 @@ async def run() -> None:
                     BotCommand(command="catalog", description="Каталог карточек"),
                     BotCommand(command="rates", description="Шансы выпадения"),
                     BotCommand(command="profile", description="Ваш профиль"),
+                    BotCommand(command="team", description="Мой отряд"),
+                    BotCommand(command="tower", description="Бесконечная башня"),
+                    BotCommand(command="quests", description="Ежедневные задания"),
+                    BotCommand(command="weekly", description="Еженедельные задания"),
+                    BotCommand(command="achievements", description="Достижения"),
+                    BotCommand(command="rewards", description="Получить награды"),
+                    BotCommand(command="mail", description="Игровая почта"),
+                    BotCommand(command="calendar", description="Календарь"),
+                    BotCommand(command="activities", description="Активности"),
+                    BotCommand(command="tutorial", description="Путеводитель"),
+                    BotCommand(command="daily", description="Ежедневный бонус"),
                     BotCommand(command="help", description="Помощь"),
                 ]
             )

@@ -13,12 +13,14 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaDocument,
+    InputMediaPhoto,
     Message,
 )
 
 from cardlegends.domain.fate import BANNER_ID, BANNER_NAME, CARD_IDS, DROP_RATES
 from cardlegends.domain.game import GameError
-from cardlegends.domain.progression import MAX_LEVEL, MAX_NP, combat_stats, upgrade_cost
+from cardlegends.domain.progression import MAX_LEVEL, MAX_NP, combat_stats, power, upgrade_cost
 from cardlegends.infrastructure.diagnostics import log_failure
 from cardlegends.infrastructure.fate_images import CardImageError, check_card_images, load_card_png
 
@@ -35,16 +37,14 @@ def keyboard(rows):
 
 
 def menu():
-    # A token belongs to this button, not to each received callback. Double taps reuse it.
     return keyboard(
         [
-            [("Призвать ×1 — 100 монет", f"fc:draw:1:{uuid4().hex}")],
-            [("Призвать ×10 — 1 000 монет", f"fc:draw:10:{uuid4().hex}")],
-            [("Моя коллекция", "fc:collection"), ("Каталог карточек", "fc:catalog:0")],
-            [("Профиль", "fc:profile"), ("Шансы выпадения", "fc:rates")],
-            [("Отряд", "fc:team"), ("Бесконечная башня", "fc:tower")],
-            [("История", "fc:history"), ("Ежедневная награда", "fc:daily")],
-            [("Архив коллекции 0.2", "fc:archive:0"), ("Помощь", "fc:help")],
+            [("◈ Профиль", "fc:profile"), ("▣ Моя коллекция", "r2:inv:0:power:all:all")],
+            [("✦ Призыв", "fc:summon"), ("⚔ Мой отряд", "fc:team")],
+            [("♜ Бесконечная башня", "fc:tower"), ("Активности", "r2:activities")],
+            [("Задания", "r2:q:daily:0"), ("Достижения", "r2:q:achievements:0")],
+            [("Награды", "r2:rewards:all:0"), ("Игровая почта", "r2:rewards:mail:0")],
+            [("Помощь", "fc:help"), ("Календарь", "r2:calendar")],
         ]
     )
 
@@ -68,7 +68,14 @@ async def display(event, text, markup=None):
             return
         # Photo captions have a 1024-char limit; catalog/result text has its own message.
         if event.message.photo or event.message.document:
-            await event.message.answer(text, reply_markup=markup)
+            if len(text) <= 1024:
+                try:
+                    await event.message.edit_caption(caption=text, reply_markup=markup)
+                except TelegramBadRequest as error:
+                    if "message is not modified" not in error.message.lower():
+                        raise
+            else:
+                await event.message.answer(text, reply_markup=markup)
             return
         try:
             await event.message.edit_text(text, reply_markup=markup)
@@ -101,7 +108,32 @@ async def _send_png(event, game, character, caption=None, markup=None):
     png = await asyncio.to_thread(load_card_png, character.code, game.cards_dir)
     caption = caption or card_text(character)
     markup = markup or keyboard([back()])
-    send = event.bot.send_document if png.as_document else event.bot.send_photo
+
+    async def send(chat_id, **kwargs):
+        if (
+            isinstance(event, CallbackQuery)
+            and isinstance(event.message, Message)
+            and (
+                (event.message.photo and not png.as_document)
+                or (event.message.document and png.as_document)
+            )
+        ):
+            media_cls = InputMediaDocument if png.as_document else InputMediaPhoto
+            try:
+                return await event.message.edit_media(
+                    media=media_cls(
+                        media=kwargs["document" if png.as_document else "photo"],
+                        caption=kwargs["caption"],
+                    ),
+                    reply_markup=kwargs["reply_markup"],
+                )
+            except TelegramBadRequest as error:
+                if "message is not modified" in error.message.lower():
+                    return event.message
+                raise
+        method = event.bot.send_document if png.as_document else event.bot.send_photo
+        return await method(chat_id, **kwargs)
+
     media_arg = "document" if png.as_document else "photo"
     key = png.cache_key
     try:
@@ -141,11 +173,11 @@ async def _send_png(event, game, character, caption=None, markup=None):
                 log_failure(logger, "card_cache_failed", error, "telegram_media_cache")
 
 
-async def show_card(event, game, character, card=None, copies=0):
+async def show_card(event, game, character, card=None, copies=0, notice=None):
     """Compatibility for owned-card links; prepared Fate art is never rendered."""
     if character.code in CARD_IDS:
         rows = []
-        caption = card_text(character)
+        caption = (h(notice) + "\n" if notice else "") + card_text(character)
         if card:
             stats = combat_stats(character, card)
             caption += (
@@ -153,7 +185,17 @@ async def show_card(event, game, character, card=None, copies=0):
                 f"\nHP: {stats['hp']} • ATK: {stats['atk']} • DEF: {stats['def']}"
                 f"\nАктивных копий: {copies}"
             )
+            await game.tutorial(event.from_user.id, "card")
+            team = await game.team(event.from_user.id)
+            slots = [str(slot) for slot, item, _ in team if item.id == card.id]
+            caption += (
+                f"\nСила: {power(stats)} · Отряд: {', '.join(slots) if slots else 'нет'}"
+                f"\nИзбранное: {'да' if card.favorite else 'нет'}"
+                f"\nДо уровня: {2 * card.level if card.level < 100 else 'MAX'} EXP"
+            )
+            rows.append([("В отряд", f"r2:slot:{card.id.hex}")])
             if card.level < MAX_LEVEL:
+                rows.append([("↑ Максимум за EXP", f"fc:l:{card.id.hex}:0:{uuid4().hex[:16]}")])
                 new_key = uuid4().hex[:16]
                 cost = upgrade_cost(card.level, 1)
                 rows.append(
@@ -167,6 +209,9 @@ async def show_card(event, game, character, card=None, copies=0):
                 )
             if card.np < MAX_NP:
                 rows.append([("Слить дубликат → NP +1", f"fc:n:{card.id.hex}:{uuid4().hex[:16]}")])
+            rows.append(
+                [("← Коллекция", "r2:inv:0:power:all:all"), ("Награды", "r2:rewards:all:0")]
+            )
             rows.append([("Все экземпляры персонажа", f"fc:copies:{character.code}:0")])
             rows.append(
                 [
@@ -215,32 +260,16 @@ async def show_card(event, game, character, card=None, copies=0):
 
 
 def create_game_router(game, players):
+    from cardlegends.bot.rpg_ui import RPGScreens
+
+    rpg = RPGScreens(game)
     router = Router(name="fate_first_summon")
 
     async def home(event):
-        p = await game.profile(event.from_user.id)
-        await display(
-            event,
-            f"<b>ANIMEVAULT CARDS</b>\n{BANNER_NAME}\n\n"
-            f"Игрок: {h(p['player'].display_name)}\n"
-            f"AnimeVault Coins: {coins(p['balance'])}\n"
-            f"Опыт карт: {coins(p['training_xp'])} EXP\n"
-            f"Fate Collection: {p['unique']}/4",
-            menu(),
-        )
+        await rpg.home(event)
 
     async def profile(event):
-        p = await game.profile(event.from_user.id)
-        await display(
-            event,
-            f"<b>Профиль</b>\n{h(p['player'].display_name)}\n"
-            f"Регистрация: {p['player'].created_at:%d.%m.%Y} UTC\n"
-            f"AnimeVault Coins: {coins(p['balance'])}\n"
-            f"Уровень игрока: {p['level']} • Общий опыт: {p['xp']}\n"
-            f"Опыт для прокачки карт: {p['training_xp']} EXP\n"
-            f"Fate: {p['unique']}/4 • Экземпляров: {p['total']}\n"
-            f"Архивных экземпляров: {p['archived']}\nПризывов: {p['summons']}",
-        )
+        await rpg.profile(event)
 
     async def team(event):
         members = await game.team(event.from_user.id)
@@ -267,6 +296,8 @@ def create_game_router(game, players):
                 text += f"\n{slot}. Свободный слот"
                 rows.append([(f"Добавить в слот {slot}", f"fc:ts:{slot}:0")])
         text += f"\n\nСумма характеристик: HP {hp} • ATK {atk} • DEF {defense}"
+        text += f"\nБоевая мощь: {hp + 5 * atk + 3 * defense}"
+        rows += [[(f"Развить: {c.name_en}", f"fc:card:{card.id.hex}")] for _, card, c in members]
         text += "\nВ бою участвуют только назначенные экземпляры. Они защищены от слияния."
         rows.append([("В башню", "fc:tower")])
         await display(event, text, keyboard(rows + [back()]))
@@ -281,7 +312,7 @@ def create_game_router(game, players):
         rows = [
             [
                 (
-                    f"{h(character.name_en)} — Ур. {card.level}, NP {card.np}/5",
+                    f"{character.name_en} — Ур. {card.level}, NP {card.np}/5",
                     f"fc:ta:{slot}:{card.id.hex}",
                 )
             ]
@@ -304,48 +335,40 @@ def create_game_router(game, players):
         )
 
     async def tower(event):
-        highest, members = await game.tower_info(event.from_user.id)
-        rows = []
-        if members:
-            rows.append(
-                [(f"Штурмовать этаж {highest + 1}", f"fc:tf:{highest + 1}:{uuid4().hex[:16]}")]
-            )
-            if highest:
-                rows.append(
-                    [
-                        (
-                            f"Повторить этаж {highest} (½ награды)",
-                            f"fc:tf:{highest}:{uuid4().hex[:16]}",
-                        )
-                    ]
-                )
-        rows.append([("Мой отряд", "fc:team")])
-        text = (
-            "<b>Бесконечная башня</b>\n"
-            f"Наивысший пройденный этаж: {highest}\n"
-            f"Отряд: {len(members)}/3\n\n"
-            "Автобой: отряд атакует первым; HP восстанавливается между боями. "
-            "За победу дают AnimeVault Coins и опыт для прокачки карт. "
-            "Повторные этажи приносят половину награды. "
-            "За поражение монеты и EXP не начисляются."
-        )
-        if not members:
-            text += "\n\nДля входа сначала назначьте карточки в отряд."
-        await display(event, text, keyboard(rows + [back()]))
+        await rpg.tower(event)
 
     async def tower_fight(event, floor, key):
         run, highest, balance, training_xp = await game.fight_tower(event.from_user.id, floor, key)
         title = "ПОБЕДА!" if run.victory else "ПОРАЖЕНИЕ"
+        report = run.report or {}
+        logs = report.get("log", [])
+        excerpt = logs if len(logs) <= 6 else logs[:3] + ["…"] + logs[-3:]
+        details = (
+            f"\n{h(report.get('enemy', 'Архивный противник'))}"
+            f"\nПротивник: HP {report.get('stats', {}).get('hp', '—')} "
+            f"· ATK {report.get('stats', {}).get('atk', '—')} "
+            f"· DEF {report.get('stats', {}).get('def', '—')}"
+            "\nОтряд: "
+            + ", ".join(h(x["name"]) for x in report.get("team", []))
+            + f"\nНанесено: {report.get('dealt', '—')} · Получено: {report.get('received', '—')}\n"
+            + "\n".join(h(line) for line in excerpt)
+        )
+        if run.first_clear:
+            details += "\n◆ Новый этаж открыт. Проверьте достижения и награды."
         await display(
             event,
             f"<b>Бесконечная башня · этаж {run.floor}: {title}</b>\n"
             f"Раундов: {run.turns}\nОставшееся HP отряда: {run.remaining_hp}\n"
             f"Награда: +{coins(run.coins)} монет, +{coins(run.xp)} EXP\n"
             f"Баланс: {coins(balance)} монет, {coins(training_xp)} EXP\n"
-            f"Наивысший пройденный этаж: {highest}",
+            f"Наивысший пройденный этаж: {highest}" + details,
             keyboard(
                 [
                     [("Продолжить башню", "fc:tower")],
+                    [
+                        ("Повторить этот этаж", f"r2:tower:{run.floor}"),
+                        ("Награды", "r2:rewards:all:0"),
+                    ],
                     [("Улучшить отряд", "fc:team")],
                     back(),
                 ]
@@ -378,7 +401,14 @@ def create_game_router(game, players):
                 if issues
                 else "\nВыберите призыв:"
             ),
-            menu(),
+            keyboard(
+                [
+                    [("Призвать ×1 — 100 монет", f"fc:draw:1:{uuid4().hex}")],
+                    [("Призвать ×10 — 1 000 монет", f"fc:draw:10:{uuid4().hex}")],
+                    [("Шансы", "fc:rates"), ("Каталог", "fc:catalog:0")],
+                    back(),
+                ]
+            ),
         )
 
     async def collection(event):
@@ -391,6 +421,7 @@ def create_game_router(game, players):
             rows.append(
                 [(f"{'🔒 ' if not quantity else ''}{c.name_en} ×{quantity}", f"fc:owned:{c.code}")]
             )
+        rows.append([("Фильтры и развитие", "r2:inv:0:power:all:all")])
         text += f"\nСобрано: {sum(q > 0 for _, q, *_ in entries)}/4"
         await display(event, text, keyboard(rows + [back()]))
 
@@ -565,11 +596,26 @@ def create_game_router(game, players):
             "HP/ATK/DEF растут от уровня и NP. Избранные копии не расходуются.\n"
             "Новый аккаунт: 1 000 AnimeVault Coins один раз. Реальных платежей нет.\n"
             "Старые экземпляры доступны в архиве, баланс и прогресс сохраняются.",
+            keyboard(
+                [
+                    [("Путеводитель", "r2:tutorial:open"), ("Активности", "r2:activities")],
+                    [("Каталог", "fc:catalog:0"), ("Шансы", "fc:rates")],
+                    [("История призывов", "fc:history"), ("Архив", "fc:archive:0")],
+                    back(),
+                ]
+            ),
         )
 
-    async def daily(event):
-        balance = await game.daily(event.from_user.id)
-        await display(event, f"Награда получена: +{game.economy.daily} монет.\nБаланс: {balance}")
+    async def daily(event, update_id=None):
+        balance = await game.daily(event.from_user.id, telegram_update_id=update_id)
+        await display(
+            event,
+            f"Награда получена: +{game.economy.daily} монет.\nБаланс: {balance}"
+            "\n◆ Бонус календаря доступен в наградах.",
+            keyboard(
+                [[("Календарь", "r2:calendar"), ("Награды", "r2:rewards:calendar:0")], back()]
+            ),
+        )
 
     @router.message(Command("start"))
     async def start(message):
@@ -592,9 +638,17 @@ def create_game_router(game, players):
             "daily",
             "team",
             "tower",
+            "quests",
+            "weekly",
+            "achievements",
+            "rewards",
+            "mail",
+            "activities",
+            "calendar",
+            "tutorial",
         )
     )
-    async def command(message):
+    async def command(message, event_update):
         if message.chat.type != "private":
             return
         name = message.text.split()[0].split("@")[0][1:]
@@ -608,9 +662,21 @@ def create_game_router(game, players):
             "daily": daily,
             "team": team,
             "tower": tower,
+            "quests": lambda e: rpg.objectives(e, "daily"),
+            "weekly": lambda e: rpg.objectives(e, "weekly"),
+            "achievements": lambda e: rpg.objectives(e, "achievements"),
+            "rewards": rpg.rewards,
+            "mail": lambda e: rpg.rewards(e, "mail"),
+            "activities": rpg.activities,
+            "calendar": rpg.calendar,
+            "tutorial": lambda e: rpg.tutorial(e, "open"),
         }
         try:
-            if name == "catalog":
+            if name not in ("help", "rates", "catalog"):
+                await game.visit(message.from_user.id)
+            if name == "daily":
+                await daily(message, event_update.update_id)
+            elif name == "catalog":
                 await catalog(message, 0)
             else:
                 await actions[name](message)
@@ -625,7 +691,11 @@ def create_game_router(game, players):
     @router.callback_query()
     async def callback(query, event_update):
         try:
-            await query.answer()
+            busy = any(
+                (query.data or "").startswith(prefix)
+                for prefix in ("fc:tf:", "fc:l:", "fc:n:", "r2:claim")
+            )
+            await query.answer("Сохраняем результат…" if busy else None)
         except TelegramAPIError as error:
             log_failure(logger, "callback_ack_failed", error, "telegram_callback_ack")
         if (
@@ -649,6 +719,10 @@ def create_game_router(game, players):
                 }.get(action, action)
                 parts = ["fc", action] + (["0"] if action == "catalog" else [])
         try:
+            await game.visit(query.from_user.id)
+            if parts[0] == "r2":
+                await rpg.handle(query, parts)
+                return
             if len(parts) < 2 or parts[0] != "fc":
                 raise ValueError
             action = parts[1]
@@ -664,7 +738,9 @@ def create_game_router(game, players):
                 "team": team,
                 "tower": tower,
             }
-            if action in simple and len(parts) == 2:
+            if action == "daily" and len(parts) == 2:
+                await daily(query, event_update.update_id)
+            elif action in simple and len(parts) == 2:
                 await simple[action](query)
             elif action == "draw" and len(parts) == 4 and parts[2] in ("1", "10"):
                 sid = await game.summon(
@@ -698,13 +774,31 @@ def create_game_router(game, players):
             elif action == "copies" and len(parts) == 4:
                 await copies(query, parts[2], int(parts[3]))
             elif action == "l" and len(parts) == 5:
-                await game.level_up(query.from_user.id, parts[2], int(parts[3]), parts[4])
+                changed = await game.level_up(query.from_user.id, parts[2], int(parts[3]), parts[4])
                 card, c, quantity = await game.card(query.from_user.id, parts[2])
-                await show_card(query, game, c, card, quantity)
+                await show_card(
+                    query,
+                    game,
+                    c,
+                    card,
+                    quantity,
+                    "◆ Уровень повышен! Прогресс заданий сохранён."
+                    if changed
+                    else "Операция уже выполнена; показан текущий экземпляр.",
+                )
             elif action == "n" and len(parts) == 4:
-                await game.fuse_np(query.from_user.id, parts[2], parts[3])
+                changed = await game.fuse_np(query.from_user.id, parts[2], parts[3])
                 card, c, quantity = await game.card(query.from_user.id, parts[2])
-                await show_card(query, game, c, card, quantity)
+                await show_card(
+                    query,
+                    game,
+                    c,
+                    card,
+                    quantity,
+                    "◆ NP повышен! Проверьте достижения."
+                    if changed
+                    else "Операция уже выполнена; показан текущий экземпляр.",
+                )
             elif action == "archive" and len(parts) == 3:
                 await archive(query, int(parts[2]))
             elif action == "card" and len(parts) == 3:

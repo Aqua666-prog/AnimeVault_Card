@@ -85,9 +85,9 @@ class Character(Base):
 class Wallet(Base):
     __tablename__ = "wallets"
     player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), primary_key=True)
-    balance: Mapped[int] = mapped_column(Integer)
-    xp: Mapped[int] = mapped_column(Integer, default=0)
-    training_xp: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    balance: Mapped[int] = mapped_column(BigInteger)
+    xp: Mapped[int] = mapped_column(BigInteger, default=0)
+    training_xp: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     __table_args__ = (
         CheckConstraint("balance >= 0"),
         CheckConstraint("xp >= 0"),
@@ -126,7 +126,7 @@ class Summon(Base):
     key: Mapped[str] = mapped_column(String(64))
     count: Mapped[int] = mapped_column(Integer)
     total_cost: Mapped[int | None] = mapped_column(Integer)
-    balance_after: Mapped[int | None] = mapped_column(Integer)
+    balance_after: Mapped[int | None] = mapped_column(BigInteger)
     telegram_update_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     __table_args__ = (
@@ -174,7 +174,7 @@ class CardUpgrade(Base):
     __table_args__ = (
         UniqueConstraint("player_id", "key", name="uq_card_upgrades_player_key"),
         CheckConstraint("kind IN ('level','np')", name="ck_card_upgrades_kind"),
-        CheckConstraint("steps BETWEEN 1 AND 10", name="ck_card_upgrades_steps"),
+        CheckConstraint("steps BETWEEN 1 AND 99", name="ck_card_upgrades_steps"),
         CheckConstraint("coin_cost >= 0", name="ck_card_upgrades_cost"),
         CheckConstraint("xp_cost >= 0", name="ck_card_upgrades_xp_cost"),
     )
@@ -192,8 +192,8 @@ class CurrencyTransaction(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), index=True)
     kind: Mapped[str] = mapped_column(String(30))
-    delta: Mapped[int] = mapped_column(Integer)
-    balance_after: Mapped[int] = mapped_column(Integer)
+    delta: Mapped[int] = mapped_column(BigInteger)
+    balance_after: Mapped[int] = mapped_column(BigInteger)
     related_id: Mapped[str | None] = mapped_column(String(64))
     key: Mapped[str] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -205,6 +205,10 @@ class DailyReward(Base):
     player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), primary_key=True)
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     transaction_id: Mapped[UUID] = mapped_column(ForeignKey("currency_transactions.id"))
+    telegram_update_id: Mapped[int | None] = mapped_column(BigInteger)
+    __table_args__ = (
+        UniqueConstraint("player_id", "telegram_update_id", name="uq_daily_player_update"),
+    )
 
 
 class RenderCache(Base):
@@ -246,6 +250,8 @@ class TowerRun(Base):
     victory: Mapped[bool] = mapped_column(Boolean, nullable=False)
     turns: Mapped[int] = mapped_column(Integer, nullable=False)
     remaining_hp: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    first_clear: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    report: Mapped[dict | None] = mapped_column(JSONB)
     coins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     xp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -258,3 +264,37 @@ class TowerRun(Base):
         CheckConstraint("coins >= 0 AND xp >= 0", name="ck_tower_runs_rewards"),
         Index("ix_tower_runs_player_created", "player_id", "created_at"),
     )
+
+
+class RewardGrant(Base):
+    """An immutable entitlement and its single receipt, shared by every reward screen."""
+
+    __tablename__ = "reward_grants"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), index=True)
+    key: Mapped[str] = mapped_column(String(100))
+    category: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str] = mapped_column(String(250))
+    coins: Mapped[int] = mapped_column(BigInteger)
+    xp: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (
+        UniqueConstraint("player_id", "key", name="uq_reward_player_key"),
+        CheckConstraint("coins >= 0 AND xp >= 0", name="ck_reward_amounts"),
+    )
+
+
+class PlayerVisit(Base):
+    __tablename__ = "player_visits"
+    player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+
+
+class PlayerJourney(Base):
+    __tablename__ = "player_journeys"
+    player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), primary_key=True)
+    tutorial_skipped: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    viewed_card: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    viewed_tasks: Mapped[bool] = mapped_column(Boolean, server_default="false")
