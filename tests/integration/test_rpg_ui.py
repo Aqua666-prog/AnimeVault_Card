@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from aiogram.methods import EditMessageMedia, EditMessageText, SendMessage
+from aiogram.methods import EditMessageMedia, EditMessageText, SendMessage, SendPhoto
 from aiogram.types import CallbackQuery, Chat, Message, PhotoSize, Update, User
 
 from cardlegends.application.players import PlayerService

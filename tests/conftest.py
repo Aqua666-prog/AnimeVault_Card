@@ -8,6 +8,7 @@ from aiogram.client.session.base import BaseSession
 from aiogram.enums import ParseMode
 from aiogram.methods import (
     AnswerCallbackQuery,
+    DeleteMessage,
     EditMessageCaption,
     EditMessageMedia,
     EditMessageText,
@@ -66,7 +67,7 @@ class RecordingSession(BaseSession):
                 chat=Chat(id=int(method.chat_id), type="private"),
                 text=getattr(method, "text", None),
             )
-        if isinstance(method, AnswerCallbackQuery):
+        if isinstance(method, (AnswerCallbackQuery, DeleteMessage)):
             return True
         raise AssertionError(f"Unexpected Telegram method: {type(method).__name__}")
 
