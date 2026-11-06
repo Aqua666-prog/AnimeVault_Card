@@ -52,14 +52,20 @@ async def test_level_up_and_replay_persist_and_charge_once(fate_game):
     with pytest.raises(GameError, match="Недостаточно"):
         await game.level_up(42, target.id, 10, uuid4().hex[:16])
     async with game.sessions() as session:
-        assert await session.scalar(
-            select(func.count()).select_from(CurrencyTransaction).where(
-                CurrencyTransaction.kind == "card_level"
+        assert (
+            await session.scalar(
+                select(func.count())
+                .select_from(CurrencyTransaction)
+                .where(CurrencyTransaction.kind == "card_level")
             )
-        ) == 1
-        assert await session.scalar(
-            select(func.count()).select_from(CardUpgrade).where(CardUpgrade.kind == "level")
-        ) == 1
+            == 1
+        )
+        assert (
+            await session.scalar(
+                select(func.count()).select_from(CardUpgrade).where(CardUpgrade.kind == "level")
+            )
+            == 1
+        )
     # Reading from a new service instance will still see the committed values.
     from cardlegends.infrastructure.game_repository import GameService
 
@@ -84,14 +90,20 @@ async def test_np_fusion_max_5_idempotence_and_historical_summon_results(fate_ga
     with pytest.raises(GameError, match="максимальный"):
         await game.fuse_np(42, target.id, uuid4().hex[:16])
     async with game.sessions() as session:
-        assert await session.scalar(
-            select(func.count()).select_from(OwnedCard).where(
-                OwnedCard.consumed_at.is_not(None)
+        assert (
+            await session.scalar(
+                select(func.count())
+                .select_from(OwnedCard)
+                .where(OwnedCard.consumed_at.is_not(None))
             )
-        ) == 4
-        assert await session.scalar(
-            select(func.count()).select_from(CardUpgrade).where(CardUpgrade.kind == "np")
-        ) == 4
+            == 4
+        )
+        assert (
+            await session.scalar(
+                select(func.count()).select_from(CardUpgrade).where(CardUpgrade.kind == "np")
+            )
+            == 4
+        )
     assert (await game.profile(42))["balance"] == 0
 
 
