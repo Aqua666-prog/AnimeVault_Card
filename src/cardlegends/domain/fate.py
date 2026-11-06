@@ -14,7 +14,13 @@ TOTAL_BPS = 10_000
 
 def draw_fate(count, rates=None, randbelow=None):
     rates = DROP_RATES if rates is None else rates
-    if rates != DROP_RATES or sum(rates.values()) != TOTAL_BPS or count not in (1, 10):
+    if (
+        rates != DROP_RATES
+        or any(type(weight) is not int for weight in rates.values())
+        or sum(rates.values()) != TOTAL_BPS
+        or type(count) is not int
+        or count not in (1, 10)
+    ):
         raise GameError("Некорректная конфигурация Fate-баннера. Призыв недоступен.")
     randbelow = randbelow or secrets.randbelow
     result = []

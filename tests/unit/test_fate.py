@@ -68,3 +68,11 @@ def test_large_simulation_with_binomial_six_sigma_tolerance():
     for code, bps in DROP_RATES.items():
         p = bps / 10000  # Statistics only; production rolls use integers throughout.
         assert abs(counts[code] - n * p) < 6 * math.sqrt(n * p * (1 - p))
+
+
+def test_float_configuration_and_noninteger_count_are_rejected():
+    with pytest.raises(GameError):
+        draw_fate(1, {code: float(bps) for code, bps in DROP_RATES.items()})
+    for count in (True, 1.0, 10.0):
+        with pytest.raises(GameError):
+            draw_fate(count)
