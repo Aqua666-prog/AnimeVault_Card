@@ -212,16 +212,7 @@ class RPGScreens:
             [("Все награды", "r2:rewards:all:0")],
             back(),
         ]
-        await display_scene(
-            event, self.game, "tower", text, keyboard(rows),
-            subtitle=f"Этаж {floor} · {enemy_name(floor)}",
-            metrics=(
-                f"HP врага: {coins(enemy['hp'])}",
-                f"ATK: {coins(enemy['atk'])}  DEF: {coins(enemy['def'])}",
-                f"Ваш рекорд: {highest}",
-            ),
-            hp=(enemy["hp"], enemy["hp"]),
-        )
+        await display(event, text, keyboard(rows))
 
     async def rewards(self, event, category="all", page=0):
         _, grants, now = await self.game.reward_board(event.from_user.id, category)
@@ -407,7 +398,16 @@ class RPGScreens:
             [("Мой отряд", "fc:team"), ("Награды этажей", "r2:rewards:all:0")],
             back(),
         ]
-        await display(event, text, keyboard(rows))
+        await display_scene(
+            event, self.game, "tower", text, keyboard(rows),
+            subtitle=f"Этаж {floor} · {enemy_name(floor)}",
+            metrics=(
+                f"HP врага: {coins(enemy['hp'])}",
+                f"ATK: {coins(enemy['atk'])}  DEF: {coins(enemy['def'])}",
+                f"Ваш рекорд: {highest}",
+            ),
+            hp=(enemy["hp"], enemy["hp"]),
+        )
 
     async def handle(self, event, parts):
         action = parts[1] if len(parts) > 1 else ""
