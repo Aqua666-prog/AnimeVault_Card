@@ -14,6 +14,7 @@ from cardlegends.domain.progression import combat_stats
 from cardlegends.infrastructure.game_models import CardUpgrade, CurrencyTransaction, OwnedCard
 from cardlegends.infrastructure.players import PostgresPlayerRepository
 
+
 def callback_update(data, update_id=1):
     return Update(
         update_id=update_id,
