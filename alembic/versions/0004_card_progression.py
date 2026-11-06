@@ -4,6 +4,7 @@ Existing owned-card rows and summon history are preserved.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0004_card_progression"
