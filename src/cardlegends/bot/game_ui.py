@@ -364,14 +364,17 @@ def create_game_router(game, players):
         team_max_hp = sum(x.get('stats', {}).get('hp', 0) for x in report.get('team', [])) or 1
         details = (
             f"\n\n👹 <b>{h(report.get('enemy', 'Архивный противник'))}</b>"
-            f"\n❤️ HP противника: {coins(max(0, enemy_hp - report.get('dealt', 0)))}/{coins(enemy_hp)}"
+            f"\n❤️ HP противника: {coins(max(0, enemy_hp - report.get('dealt', 0)))}"
+            f"/{coins(enemy_hp)}"
             f"\n{meter(enemy_hp - report.get('dealt', 0), enemy_hp)}"
             f"\n🛡 HP отряда: {coins(run.remaining_hp)}/{coins(team_max_hp)}"
             f"\n{meter(run.remaining_hp, team_max_hp)}"
-            f"\n⚔ ATK {coins(report.get('stats', {}).get('atk', 0))} · DEF {coins(report.get('stats', {}).get('def', 0))}"
+            f"\n⚔ ATK {coins(report.get('stats', {}).get('atk', 0))}"
+            f" · DEF {coins(report.get('stats', {}).get('def', 0))}"
             "\n👥 Отряд: "
             + ", ".join(h(x["name"]) for x in report.get("team", []))
-            + f"\n💥 Нанесено: {coins(report.get('dealt', 0))} · Получено: {coins(report.get('received', 0))}\n"
+            + f"\n💥 Нанесено: {coins(report.get('dealt', 0))}"
+            + f" · Получено: {coins(report.get('received', 0))}\n"
             + "\n".join(h(line) for line in excerpt)
         )
         if run.first_clear:
