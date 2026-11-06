@@ -145,7 +145,11 @@ class RPGScreens:
             ),
             keyboard(buttons),
             subtitle=f"Карточек: {total} · страница {page + 1}",
-            metrics=("Отряды • Редкости • NP", "Фильтры и сортировка", "Выбери карточку для развития"),
+            metrics=(
+                "Отряды • Редкости • NP",
+                "Фильтры и сортировка",
+                "Выбери карточку для развития",
+            ),
         )
 
     async def filters(self, event, sort):
@@ -218,7 +222,8 @@ class RPGScreens:
         _, grants, now = await self.game.reward_board(event.from_user.id, category)
         grants = [g for g in grants if category == "all" or g.category == category]
         page = max(0, min(page, max(0, (len(grants) - 1) // 6)))
-        text = f"<b>{'✉️ ИГРОВАЯ ПОЧТА' if category == 'mail' else '🎁 НАГРАДЫ'}</b>\n━━━━━━━━━━━━━━\n"
+        title = "✉️ ИГРОВАЯ ПОЧТА" if category == "mail" else "🎁 НАГРАДЫ"
+        text = f"<b>{title}</b>\n━━━━━━━━━━━━━━\n"
         rows = []
         for g in grants[page * 6 : page * 6 + 6]:
             status = (
