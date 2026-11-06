@@ -42,6 +42,7 @@ def menu():
             [("Призвать ×10 — 1 000 монет", f"fc:draw:10:{uuid4().hex}")],
             [("Моя коллекция", "fc:collection"), ("Каталог карточек", "fc:catalog:0")],
             [("Профиль", "fc:profile"), ("Шансы выпадения", "fc:rates")],
+            [("Отряд", "fc:team"), ("Бесконечная башня", "fc:tower")],
             [("История", "fc:history"), ("Ежедневная награда", "fc:daily")],
             [("Архив коллекции 0.2", "fc:archive:0"), ("Помощь", "fc:help")],
         ]
@@ -156,13 +157,13 @@ async def show_card(event, game, character, card=None, copies=0):
                 new_key = uuid4().hex[:16]
                 cost = upgrade_cost(card.level, 1)
                 rows.append(
-                    [(f"↑ Уровень +1 — {coins(cost)} монет", f"fc:l:{card.id.hex}:1:{new_key}")]
+                    [(f"↑ Уровень +1 — {coins(cost)} EXP", f"fc:l:{card.id.hex}:1:{new_key}")]
                 )
             if card.level <= MAX_LEVEL - 10:
                 new_key = uuid4().hex[:16]
                 cost = upgrade_cost(card.level, 10)
                 rows.append(
-                    [(f"↑ Уровень +10 — {coins(cost)} монет", f"fc:l:{card.id.hex}:10:{new_key}")]
+                    [(f"↑ Уровень +10 — {coins(cost)} EXP", f"fc:l:{card.id.hex}:10:{new_key}")]
                 )
             if card.np < MAX_NP:
                 rows.append([("Слить дубликат → NP +1", f"fc:n:{card.id.hex}:{uuid4().hex[:16]}")])
@@ -223,6 +224,7 @@ def create_game_router(game, players):
             f"<b>ANIMEVAULT CARDS</b>\n{BANNER_NAME}\n\n"
             f"Игрок: {h(p['player'].display_name)}\n"
             f"AnimeVault Coins: {coins(p['balance'])}\n"
+            f"Опыт карт: {coins(p['training_xp'])} EXP\n"
             f"Fate Collection: {p['unique']}/4",
             menu(),
         )
@@ -234,9 +236,120 @@ def create_game_router(game, players):
             f"<b>Профиль</b>\n{h(p['player'].display_name)}\n"
             f"Регистрация: {p['player'].created_at:%d.%m.%Y} UTC\n"
             f"AnimeVault Coins: {coins(p['balance'])}\n"
-            f"Уровень: {p['level']} • Опыт: {p['xp']}\n"
+            f"Уровень игрока: {p['level']} • Общий опыт: {p['xp']}\n"
+            f"Опыт для прокачки карт: {p['training_xp']} EXP\n"
             f"Fate: {p['unique']}/4 • Экземпляров: {p['total']}\n"
             f"Архивных экземпляров: {p['archived']}\nПризывов: {p['summons']}",
+        )
+
+    async def team(event):
+        members = await game.team(event.from_user.id)
+        slots = {slot: (card, character) for slot, card, character in members}
+        text = "<b>Мой отряд — до 3 карточек</b>\n"
+        rows = []
+        hp = atk = defense = 0
+        for slot in range(1, 4):
+            item = slots.get(slot)
+            if item:
+                card, character = item
+                stats = combat_stats(character, card)
+                hp += stats["hp"]
+                atk += stats["atk"]
+                defense += stats["def"]
+                text += f"\n{slot}. {h(character.name_en)} — Ур. {card.level}, NP {card.np}/5"
+                rows.append(
+                    [
+                        (f"Изменить слот {slot}", f"fc:ts:{slot}:0"),
+                        ("Убрать", f"fc:tr:{slot}"),
+                    ]
+                )
+            else:
+                text += f"\n{slot}. Свободный слот"
+                rows.append([(f"Добавить в слот {slot}", f"fc:ts:{slot}:0")])
+        text += f"\n\nСумма характеристик: HP {hp} • ATK {atk} • DEF {defense}"
+        text += "\nВ бою участвуют только назначенные экземпляры. Они защищены от слияния."
+        rows.append([("В башню", "fc:tower")])
+        await display(event, text, keyboard(rows + [back()]))
+
+    async def team_pick(event, slot, page):
+        if slot not in (1, 2, 3):
+            raise GameError("Неверный слот отряда.")
+        items, total, page = await game.team_candidates(event.from_user.id, page)
+        if not items:
+            await display(event, "Нет доступных карточек Fate. Сначала выполните призыв.")
+            return
+        rows = [
+            [
+                (
+                    f"{h(character.name_en)} — Ур. {card.level}, NP {card.np}/5",
+                    f"fc:ta:{slot}:{card.id.hex}",
+                )
+            ]
+            for card, character in items
+        ]
+        if total > 8:
+            rows.append(
+                [
+                    ("←", f"fc:ts:{slot}:{max(0, page - 1)}"),
+                    ("→", f"fc:ts:{slot}:{min((total - 1) // 8, page + 1)}"),
+                ]
+            )
+        rows.append([("Назад к отряду", "fc:team")])
+        await display(
+            event,
+            f"<b>Выберите карту в слот {slot}</b>\n"
+            f"Страница {page + 1}/{max(1, (total + 7) // 8)}. "
+            "Одна и та же копия не может занимать два слота.",
+            keyboard(rows),
+        )
+
+    async def tower(event):
+        highest, members = await game.tower_info(event.from_user.id)
+        rows = []
+        if members:
+            rows.append(
+                [(f"Штурмовать этаж {highest + 1}", f"fc:tf:{highest + 1}:{uuid4().hex[:16]}")]
+            )
+            if highest:
+                rows.append(
+                    [
+                        (
+                            f"Повторить этаж {highest} (½ награды)",
+                            f"fc:tf:{highest}:{uuid4().hex[:16]}",
+                        )
+                    ]
+                )
+        rows.append([("Мой отряд", "fc:team")])
+        text = (
+            "<b>Бесконечная башня</b>\n"
+            f"Наивысший пройденный этаж: {highest}\n"
+            f"Отряд: {len(members)}/3\n\n"
+            "Автобой: отряд атакует первым; HP восстанавливается между боями. "
+            "За победу дают AnimeVault Coins и опыт для прокачки карт. "
+            "Повторные этажи приносят половину награды. "
+            "За поражение монеты и EXP не начисляются."
+        )
+        if not members:
+            text += "\n\nДля входа сначала назначьте карточки в отряд."
+        await display(event, text, keyboard(rows + [back()]))
+
+    async def tower_fight(event, floor, key):
+        run, highest, balance, training_xp = await game.fight_tower(event.from_user.id, floor, key)
+        title = "ПОБЕДА!" if run.victory else "ПОРАЖЕНИЕ"
+        await display(
+            event,
+            f"<b>Бесконечная башня · этаж {run.floor}: {title}</b>\n"
+            f"Раундов: {run.turns}\nОставшееся HP отряда: {run.remaining_hp}\n"
+            f"Награда: +{coins(run.coins)} монет, +{coins(run.xp)} EXP\n"
+            f"Баланс: {coins(balance)} монет, {coins(training_xp)} EXP\n"
+            f"Наивысший пройденный этаж: {highest}",
+            keyboard(
+                [
+                    [("Продолжить башню", "fc:tower")],
+                    [("Улучшить отряд", "fc:team")],
+                    back(),
+                ]
+            ),
         )
 
     async def rates(event):
@@ -444,8 +557,10 @@ def create_game_router(game, players):
             "<b>AnimeVault Cards — Fate</b>\n/start — меню\n"
             "/summon — призыв\n/collection — моя коллекция\n/catalog — каталог\n"
             "/profile — профиль\n/rates — точные шансы\n/history — история\n"
-            "/daily — ежедневная награда 300 монет (00:00 UTC)\n/help — помощь\n"
-            "Уровень карточки: 1–100, +1 или +10 за монеты (2 × текущий уровень).\n"
+            "/daily — ежедневная награда 300 монет (00:00 UTC)\n"
+            "/team — отряд до 3 карт\n/tower — бесконечная башня\n/help — помощь\n"
+            "Уровень карточки: 1–100, +1 или +10 за EXP (2 × текущий уровень).\n"
+            "Опыт карт зарабатывается призывами и прохождением башни.\n"
             "NP: 1–5, слияние с чистым дубликатом Ур. 1/NP 1 того же героя.\n"
             "HP/ATK/DEF растут от уровня и NP. Избранные копии не расходуются.\n"
             "Новый аккаунт: 1 000 AnimeVault Coins один раз. Реальных платежей нет.\n"
@@ -466,7 +581,18 @@ def create_game_router(game, players):
         await home(message)
 
     @router.message(
-        Command("summon", "collection", "catalog", "profile", "rates", "help", "history", "daily")
+        Command(
+            "summon",
+            "collection",
+            "catalog",
+            "profile",
+            "rates",
+            "help",
+            "history",
+            "daily",
+            "team",
+            "tower",
+        )
     )
     async def command(message):
         if message.chat.type != "private":
@@ -480,6 +606,8 @@ def create_game_router(game, players):
             "help": help_page,
             "history": history,
             "daily": daily,
+            "team": team,
+            "tower": tower,
         }
         try:
             if name == "catalog":
@@ -533,6 +661,8 @@ def create_game_router(game, players):
                 "help": help_page,
                 "history": history,
                 "daily": daily,
+                "team": team,
+                "tower": tower,
             }
             if action in simple and len(parts) == 2:
                 await simple[action](query)
@@ -544,6 +674,16 @@ def create_game_router(game, players):
                     telegram_update_id=event_update.update_id,
                 )
                 await results(query, sid)
+            elif action == "ts" and len(parts) == 4:
+                await team_pick(query, int(parts[2]), int(parts[3]))
+            elif action == "ta" and len(parts) == 4:
+                await game.assign_team(query.from_user.id, int(parts[2]), parts[3])
+                await team(query)
+            elif action == "tr" and len(parts) == 3:
+                await game.remove_team(query.from_user.id, int(parts[2]))
+                await team(query)
+            elif action == "tf" and len(parts) == 4:
+                await tower_fight(query, int(parts[2]), parts[3])
             elif action == "result" and len(parts) == 3:
                 await results(query, UUID(parts[2]))
             elif action == "catalog" and len(parts) == 3:

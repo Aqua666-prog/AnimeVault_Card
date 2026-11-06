@@ -4,6 +4,7 @@ import asyncio
 import os
 import subprocess
 import sys
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -33,9 +34,21 @@ async def test_populated_v020_upgrade_keeps_all_original_fields_and_archived_fun
     engine, sessions = database
     await engine.dispose()
     await migration(database_url, "54b3f0a493e1", "downgrade")
-    player = await PostgresPlayerRepository(sessions).upsert(42, "Старый игрок", None)
+    # Populate the historical schema directly: current ORM models reference newer columns.
+    player = SimpleNamespace(id=uuid4())
     sid, card_id, art_id = uuid4(), uuid4(), uuid4()
     async with engine.begin() as c:
+        await c.execute(
+            text(
+                "INSERT INTO players(id, telegram_id, display_name) "
+                "VALUES (:id, 42, 'Старый игрок')"
+            ),
+            {"id": player.id},
+        )
+        await c.execute(
+            text("INSERT INTO wallets(player_id, balance, xp) VALUES (:id, 1000, 0)"),
+            {"id": player.id},
+        )
         await c.execute(text("INSERT INTO franchises (id, name) VALUES ('fate', 'Fate')"))
         await c.execute(
             text(
@@ -133,6 +146,7 @@ async def test_populated_v020_upgrade_keeps_all_original_fields_and_archived_fun
     game = GameService(sessions, cards_dir=fate_assets)
     profile = await game.profile(42)
     assert profile["balance"] == 789 and profile["xp"] == 77
+    assert profile["training_xp"] == 77  # One-time migration from the historical EXP total.
     assert profile["unique"] == 0 and profile["size"] == 4 and profile["archived"] == 1
     assert len(await game.results(42, sid)) == 1
     card, character, copies = await game.card(42, card_id)

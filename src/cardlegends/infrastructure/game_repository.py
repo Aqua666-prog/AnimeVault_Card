@@ -3,12 +3,14 @@ import re
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from cardlegends.domain.fate import BANNER_ID, CARD_IDS, DROP_RATES, draw_fate
 from cardlegends.domain.game import RARITIES, Economy, GameError
-from cardlegends.domain.progression import MAX_NP, upgrade_cost
+from cardlegends.domain.progression import MAX_NP, combat_stats, upgrade_cost
+from cardlegends.domain.tower import battle as tower_battle
+from cardlegends.domain.tower import rewards as tower_rewards
 from cardlegends.infrastructure.fate_images import require_card_images
 from cardlegends.infrastructure.game_models import (
     Banner,
@@ -18,8 +20,11 @@ from cardlegends.infrastructure.game_models import (
     CurrencyTransaction,
     DailyReward,
     OwnedCard,
+    SquadSlot,
     Summon,
     SummonResult,
+    TowerProgress,
+    TowerRun,
     Wallet,
 )
 from cardlegends.infrastructure.models import PlayerRow
@@ -49,7 +54,9 @@ class GameService:
         # Old accounts with no wallet do not receive a new-account bonus via /start.
         # New registrations create their wallet and bonus in the registration transaction.
         await session.execute(
-            insert(Wallet).values(player_id=player.id, balance=0, xp=0).on_conflict_do_nothing()
+            insert(Wallet)
+            .values(player_id=player.id, balance=0, xp=0, training_xp=0)
+            .on_conflict_do_nothing()
         )
         player.last_seen_at = datetime.now(UTC)
         wallet = await session.get(Wallet, player.id)
@@ -89,6 +96,7 @@ class GameService:
                 player=player,
                 balance=wallet.balance,
                 xp=wallet.xp,
+                training_xp=wallet.training_xp,
                 level=1 + wallet.xp // self.economy.xp_per_level,
                 total=total,
                 unique=unique,
@@ -180,6 +188,7 @@ class GameService:
             chosen = draw_fate(count, banner.drop_rates, self.randbelow)
             wallet.balance -= cost
             wallet.xp += count * self.economy.xp_per_card
+            wallet.training_xp += count * self.economy.xp_per_card
             summon = Summon(
                 player_id=player.id,
                 banner_id=BANNER_ID,
@@ -413,7 +422,7 @@ class GameService:
             return cards, total, page
 
     async def level_up(self, user, card_id, steps, key):
-        """Spend coins atomically and once per callback token; locks player before inventory."""
+        """Spend training EXP once per callback token; locks player before inventory."""
         if type(steps) is not int or steps not in (1, 10):
             raise GameError("Повышение доступно на 1 или 10 уровней.")
         if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{16}", key):
@@ -446,10 +455,10 @@ class GameService:
             if card is None:
                 raise GameError("Карточка не найдена.")
             cost = upgrade_cost(card.level, steps)
-            if wallet.balance < cost:
-                raise GameError(f"Недостаточно монет. Для прокачки нужно {cost}.")
+            if wallet.training_xp < cost:
+                raise GameError(f"Недостаточно опыта карт. Для прокачки нужно {cost} EXP.")
             card.level += steps
-            wallet.balance -= cost
+            wallet.training_xp -= cost
             session.add(
                 CardUpgrade(
                     player_id=player.id,
@@ -457,17 +466,8 @@ class GameService:
                     kind="level",
                     key=op_key,
                     steps=steps,
-                    coin_cost=cost,
-                )
-            )
-            session.add(
-                CurrencyTransaction(
-                    player_id=player.id,
-                    kind="card_level",
-                    delta=-cost,
-                    balance_after=wallet.balance,
-                    related_id=str(card.id),
-                    key=op_key,
+                    coin_cost=0,
+                    xp_cost=cost,
                 )
             )
             return True
@@ -515,6 +515,9 @@ class GameService:
                     OwnedCard.level == 1,
                     OwnedCard.np == 1,
                     OwnedCard.favorite.is_(False),
+                    ~OwnedCard.id.in_(
+                        select(SquadSlot.card_id).where(SquadSlot.player_id == player.id)
+                    ),
                 )
                 .order_by(OwnedCard.created_at, OwnedCard.id)
                 .with_for_update()
@@ -613,3 +616,191 @@ class GameService:
             if not banner:
                 raise GameError("Баннер не инициализирован. Обратитесь к администратору.")
             return banner
+
+    async def team(self, user):
+        """Return the current three-slot squad; each slot refers to an exact owned copy."""
+        async with self.sessions() as session:
+            player = await session.scalar(select(PlayerRow).where(PlayerRow.telegram_id == user))
+            if not player:
+                raise GameError("Сначала нажмите /start.")
+            return await self._team_rows(session, player.id)
+
+    @staticmethod
+    async def _team_rows(session, player_id):
+        return list(
+            (
+                await session.execute(
+                    select(SquadSlot.slot, OwnedCard, Character)
+                    .join(OwnedCard, OwnedCard.id == SquadSlot.card_id)
+                    .join(Character, Character.id == OwnedCard.character_id)
+                    .where(
+                        SquadSlot.player_id == player_id,
+                        OwnedCard.consumed_at.is_(None),
+                        Character.code.in_(CARD_IDS),
+                    )
+                    .order_by(SquadSlot.slot)
+                )
+            ).all()
+        )
+
+    async def team_candidates(self, user, page=0):
+        if type(page) is not int or page < 0:
+            raise GameError("Неверная страница отряда.")
+        async with self.sessions() as session:
+            player = await session.scalar(select(PlayerRow).where(PlayerRow.telegram_id == user))
+            if not player:
+                raise GameError("Сначала нажмите /start.")
+            stmt = (
+                select(OwnedCard, Character)
+                .join(Character, Character.id == OwnedCard.character_id)
+                .where(
+                    OwnedCard.player_id == player.id,
+                    OwnedCard.consumed_at.is_(None),
+                    Character.code.in_(CARD_IDS),
+                )
+            )
+            total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
+            page = min(page, max(0, (total - 1) // 8))
+            rows = (
+                await session.execute(
+                    stmt.order_by(
+                        OwnedCard.level.desc(),
+                        OwnedCard.np.desc(),
+                        OwnedCard.created_at,
+                        OwnedCard.id,
+                    )
+                    .offset(8 * page)
+                    .limit(8)
+                )
+            ).all()
+            return list(rows), total, page
+
+    async def assign_team(self, user, slot, card_id):
+        if type(slot) is not int or slot not in (1, 2, 3):
+            raise GameError("Слот отряда должен быть от 1 до 3.")
+        try:
+            card_id = UUID(str(card_id))
+        except (ValueError, TypeError, AttributeError):
+            raise GameError("Карточка не найдена.") from None
+        async with self.sessions.begin() as session:
+            player, _ = await self.wallet(session, user)
+            card = await session.scalar(
+                select(OwnedCard)
+                .join(Character, Character.id == OwnedCard.character_id)
+                .where(
+                    OwnedCard.id == card_id,
+                    OwnedCard.player_id == player.id,
+                    OwnedCard.consumed_at.is_(None),
+                    Character.code.in_(CARD_IDS),
+                )
+                .with_for_update()
+            )
+            if card is None:
+                raise GameError("Карточка не найдена или уже использована.")
+            existing = await session.scalar(
+                select(SquadSlot).where(
+                    SquadSlot.player_id == player.id, SquadSlot.card_id == card_id
+                )
+            )
+            if existing and existing.slot != slot:
+                raise GameError("Эта копия уже находится в другом слоте отряда.")
+            stmt = insert(SquadSlot).values(player_id=player.id, slot=slot, card_id=card_id)
+            await session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["player_id", "slot"],
+                    set_={"card_id": stmt.excluded.card_id},
+                )
+            )
+
+    async def remove_team(self, user, slot):
+        if type(slot) is not int or slot not in (1, 2, 3):
+            raise GameError("Слот отряда должен быть от 1 до 3.")
+        async with self.sessions.begin() as session:
+            player, _ = await self.wallet(session, user)
+            await session.execute(
+                delete(SquadSlot).where(SquadSlot.player_id == player.id, SquadSlot.slot == slot)
+            )
+
+    async def tower_info(self, user):
+        async with self.sessions() as session:
+            player = await session.scalar(select(PlayerRow).where(PlayerRow.telegram_id == user))
+            if not player:
+                raise GameError("Сначала нажмите /start.")
+            progress = await session.get(TowerProgress, player.id)
+            return (progress.highest_cleared if progress else 0), await self._team_rows(
+                session, player.id
+            )
+
+    async def fight_tower(self, user, floor, key):
+        """A completed combat and both currencies commit together, once per button token."""
+        if type(floor) is not int or not 1 <= floor < 2**63:
+            raise GameError("Неверный этаж башни.")
+        if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{16}", key):
+            raise GameError("Кнопка устарела. Зайдите в башню заново.")
+        async with self.sessions.begin() as session:
+            player, wallet = await self.wallet(session, user)
+            old = await session.scalar(
+                select(TowerRun).where(TowerRun.player_id == player.id, TowerRun.key == key)
+            )
+            progress = await session.get(TowerProgress, player.id)
+            if old:
+                if old.floor != floor:
+                    raise GameError("Эта операция уже использована.")
+                return old, progress.highest_cleared, wallet.balance, wallet.training_xp
+            if progress is None:
+                await session.execute(
+                    insert(TowerProgress)
+                    .values(player_id=player.id, highest_cleared=0)
+                    .on_conflict_do_nothing()
+                )
+            progress = await session.scalar(
+                select(TowerProgress).where(TowerProgress.player_id == player.id).with_for_update()
+            )
+            if floor > progress.highest_cleared + 1:
+                raise GameError("Этаж ещё не открыт. Пройдите предыдущий.")
+            members = await self._team_rows(session, player.id)
+            if not members:
+                raise GameError("Сначала соберите отряд из 1–3 карточек.")
+            outcome = tower_battle(
+                floor, [combat_stats(character, card) for _, card, character in members]
+            )
+            first_clear = floor == progress.highest_cleared + 1
+            earned_coins, earned_xp = (
+                tower_rewards(floor, first_clear) if outcome.victory else (0, 0)
+            )
+            if (
+                wallet.balance + earned_coins > 2**31 - 1
+                or wallet.xp + earned_xp > 2**31 - 1
+                or wallet.training_xp + earned_xp > 2**31 - 1
+            ):
+                raise GameError("Лимит кошелька достигнут. Обратитесь к администратору.")
+            if outcome.victory:
+                wallet.balance += earned_coins
+                wallet.xp += earned_xp
+                wallet.training_xp += earned_xp
+                if first_clear:
+                    progress.highest_cleared = floor
+            run = TowerRun(
+                player_id=player.id,
+                key=key,
+                floor=floor,
+                victory=outcome.victory,
+                turns=outcome.turns,
+                remaining_hp=outcome.remaining_hp,
+                coins=earned_coins,
+                xp=earned_xp,
+            )
+            session.add(run)
+            await session.flush()
+            if outcome.victory:
+                session.add(
+                    CurrencyTransaction(
+                        player_id=player.id,
+                        kind="tower",
+                        delta=earned_coins,
+                        balance_after=wallet.balance,
+                        related_id=str(run.id),
+                        key=f"tower:{key}",
+                    )
+                )
+            return run, progress.highest_cleared, wallet.balance, wallet.training_xp

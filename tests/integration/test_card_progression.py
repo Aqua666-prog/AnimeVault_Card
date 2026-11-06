@@ -11,7 +11,12 @@ from cardlegends.application.players import PlayerService
 from cardlegends.bot.app import create_dispatcher
 from cardlegends.domain.game import GameError
 from cardlegends.domain.progression import combat_stats
-from cardlegends.infrastructure.game_models import CardUpgrade, CurrencyTransaction, OwnedCard
+from cardlegends.infrastructure.game_models import (
+    CardUpgrade,
+    CurrencyTransaction,
+    OwnedCard,
+    Wallet,
+)
 from cardlegends.infrastructure.players import PostgresPlayerRepository
 
 
@@ -40,14 +45,18 @@ async def test_level_up_and_replay_persist_and_charge_once(fate_game):
     game = fate_game
     operation = await game.summon(42, 10, uuid4().hex)
     target, character = (await game.results(42, operation))[0]
-    await game.daily(42)  # No premium purchases: daily grants 300.
+    await game.daily(42)  # Daily only grants coins; EXP is a separate resource.
+    async with game.sessions.begin() as session:
+        wallet = await session.get(Wallet, target.player_id)
+        wallet.training_xp += 10  # 100 summon EXP + 10 = price of ten levels.
     key = uuid4().hex[:16]
     assert await game.level_up(42, target.id, 10, key) is True
     assert await game.level_up(42, target.id, 10, key) is False
     card, _, copies = await game.card(42, target.id)
     assert card.level == 11 and card.np == 1 and copies == 10
     assert combat_stats(character, card)["hp"] == 1920
-    assert (await game.profile(42))["balance"] == 190
+    assert (await game.profile(42))["balance"] == 300
+    assert (await game.profile(42))["training_xp"] == 0
     with pytest.raises(GameError, match="использована"):
         await game.level_up(42, uuid4(), 10, key)
     with pytest.raises(GameError, match="Недостаточно"):
@@ -59,7 +68,7 @@ async def test_level_up_and_replay_persist_and_charge_once(fate_game):
                 .select_from(CurrencyTransaction)
                 .where(CurrencyTransaction.kind == "card_level")
             )
-            == 1
+            == 0
         )
         assert (
             await session.scalar(
@@ -158,4 +167,5 @@ async def test_telegram_card_buttons_show_level_np_and_spend_only_once(fate_game
     upgraded, _, _ = await game.card(42, target.id)
     assert upgraded.level == 2
     assert "Уровень 2/100" in bot.session.calls[-1].caption
-    assert (await game.profile(42))["balance"] == 298
+    assert (await game.profile(42))["balance"] == 300
+    assert (await game.profile(42))["training_xp"] == 98
