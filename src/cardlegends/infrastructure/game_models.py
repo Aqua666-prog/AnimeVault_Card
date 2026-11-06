@@ -87,7 +87,7 @@ class Wallet(Base):
     player_id: Mapped[UUID] = mapped_column(ForeignKey("players.id"), primary_key=True)
     balance: Mapped[int] = mapped_column(Integer)
     xp: Mapped[int] = mapped_column(Integer, default=0)
-    training_xp: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    training_xp: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     __table_args__ = (
         CheckConstraint("balance >= 0"),
         CheckConstraint("xp >= 0"),
