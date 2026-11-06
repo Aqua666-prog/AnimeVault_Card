@@ -211,7 +211,7 @@ async def test_old_draw_button_only_opens_new_banner_without_charge(fate_game, b
     game = fate_game
     await dispatcher(game).feed_update(bot, callback_update(f"av:draw:10:{uuid4().hex}"))
     assert (await game.profile(42))["balance"] == 1000
-    assert "Fate Collection" in bot.session.calls[-1].text
+    assert "Fate Collection" in bot.session.calls[-1].caption
     assert len(await game.history(42)) == 0
 
 

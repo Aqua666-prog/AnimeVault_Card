@@ -94,7 +94,8 @@ async def test_all_new_sections_work_with_real_dispatcher_and_db(fate_game, bot,
                 ),
             ),
         )
-        assert isinstance(bot.session.calls[-1], SendMessage)
+        expected = SendPhoto if command in ("/calendar", "/activities") else SendMessage
+        assert isinstance(bot.session.calls[-1], expected)
 
 
 async def test_receipt_replay_mail_html_and_card_media_edit(fate_game, bot):
