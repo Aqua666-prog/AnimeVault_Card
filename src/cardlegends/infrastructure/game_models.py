@@ -61,9 +61,15 @@ class Character(Base):
     collection_name: Mapped[str | None] = mapped_column(String(100))
     image_path: Mapped[str | None] = mapped_column(Text)
     limited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    base_hp: Mapped[int] = mapped_column(Integer, nullable=False, default=1000, server_default="1000")
-    base_atk: Mapped[int] = mapped_column(Integer, nullable=False, default=100, server_default="100")
-    base_def: Mapped[int] = mapped_column(Integer, nullable=False, default=100, server_default="100")
+    base_hp: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1000, server_default="1000"
+    )
+    base_atk: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=100, server_default="100"
+    )
+    base_def: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=100, server_default="100"
+    )
     name_ru: Mapped[str] = mapped_column(String(100))
     name_en: Mapped[str] = mapped_column(String(100))
     franchise_id: Mapped[str] = mapped_column(ForeignKey("franchises.id"), index=True)
