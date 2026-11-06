@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from cardlegends.domain.fate import BANNER_ID, CARD_IDS, DROP_RATES, draw_fate
 from cardlegends.domain.game import RARITIES, Economy, GameError
-from cardlegends.domain.progression import MAX_LEVEL, MAX_NP, upgrade_cost
+from cardlegends.domain.progression import MAX_NP, upgrade_cost
 from cardlegends.infrastructure.fate_images import require_card_images
 from cardlegends.infrastructure.game_models import (
     Banner,
