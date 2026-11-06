@@ -156,20 +156,16 @@ async def show_card(event, game, character, card=None, copies=0):
                 new_key = uuid4().hex[:16]
                 cost = upgrade_cost(card.level, 1)
                 rows.append(
-                    [(f"↑ Уровень +1 — {coins(cost)} монет",
-                      f"fc:l:{card.id.hex}:1:{new_key}")]
+                    [(f"↑ Уровень +1 — {coins(cost)} монет", f"fc:l:{card.id.hex}:1:{new_key}")]
                 )
             if card.level <= MAX_LEVEL - 10:
                 new_key = uuid4().hex[:16]
                 cost = upgrade_cost(card.level, 10)
                 rows.append(
-                    [(f"↑ Уровень +10 — {coins(cost)} монет",
-                      f"fc:l:{card.id.hex}:10:{new_key}")]
+                    [(f"↑ Уровень +10 — {coins(cost)} монет", f"fc:l:{card.id.hex}:10:{new_key}")]
                 )
             if card.np < MAX_NP:
-                rows.append(
-                    [("Слить дубликат → NP +1", f"fc:n:{card.id.hex}:{uuid4().hex[:16]}")]
-                )
+                rows.append([("Слить дубликат → NP +1", f"fc:n:{card.id.hex}:{uuid4().hex[:16]}")])
             rows.append([("Все экземпляры персонажа", f"fc:copies:{character.code}:0")])
             rows.append(
                 [
