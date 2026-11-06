@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -7,10 +8,12 @@ from sqlalchemy.dialects.postgresql import insert
 
 from cardlegends.domain.fate import BANNER_ID, CARD_IDS, DROP_RATES, draw_fate
 from cardlegends.domain.game import RARITIES, Economy, GameError
+from cardlegends.domain.progression import MAX_NP, upgrade_cost
 from cardlegends.infrastructure.fate_images import require_card_images
 from cardlegends.infrastructure.game_models import (
     Banner,
     BannerPool,
+    CardUpgrade,
     Character,
     CurrencyTransaction,
     DailyReward,
@@ -61,7 +64,11 @@ class GameService:
                         func.count(OwnedCard.id), func.count(func.distinct(OwnedCard.character_id))
                     )
                     .join(Character, Character.id == OwnedCard.character_id)
-                    .where(OwnedCard.player_id == player.id, Character.code.in_(CARD_IDS))
+                    .where(
+                        OwnedCard.player_id == player.id,
+                        OwnedCard.consumed_at.is_(None),
+                        Character.code.in_(CARD_IDS),
+                    )
                 )
             ).one()
             summons = await session.scalar(
@@ -74,6 +81,7 @@ class GameService:
                 .join(Character, Character.id == OwnedCard.character_id)
                 .where(
                     OwnedCard.player_id == player.id,
+                    OwnedCard.consumed_at.is_(None),
                     or_(Character.code.is_(None), Character.code.not_in(CARD_IDS)),
                 )
             )
@@ -222,7 +230,7 @@ class GameService:
                     func.max(OwnedCard.created_at).label("last_obtained"),
                 )
                 .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
-                .where(PlayerRow.telegram_id == user)
+                .where(PlayerRow.telegram_id == user, OwnedCard.consumed_at.is_(None))
                 .group_by(OwnedCard.character_id)
                 .subquery()
             )
@@ -284,7 +292,7 @@ class GameService:
                     select(OwnedCard, Character)
                     .join(Character)
                     .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
-                    .where(PlayerRow.telegram_id == user)
+                    .where(PlayerRow.telegram_id == user, OwnedCard.consumed_at.is_(None))
                 )
                 if fav:
                     stmt = stmt.where(OwnedCard.favorite.is_(True))
@@ -329,7 +337,11 @@ class GameService:
                     select(OwnedCard, Character)
                     .join(Character)
                     .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
-                    .where(PlayerRow.telegram_id == user, OwnedCard.id == UUID(str(card_id)))
+                    .where(
+                        PlayerRow.telegram_id == user,
+                        OwnedCard.id == UUID(str(card_id)),
+                        OwnedCard.consumed_at.is_(None),
+                    )
                 )
             ).first()
             if not result:
@@ -340,6 +352,7 @@ class GameService:
                 .where(
                     OwnedCard.player_id == result[0].player_id,
                     OwnedCard.character_id == result[1].id,
+                    OwnedCard.consumed_at.is_(None),
                 )
             )
             return *result, copies
@@ -352,20 +365,191 @@ class GameService:
                 select(OwnedCard.id)
                 .join(Character)
                 .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
-                .where(PlayerRow.telegram_id == user, Character.code == code)
-                .order_by(OwnedCard.created_at, OwnedCard.id)
+                .where(
+                    PlayerRow.telegram_id == user,
+                    Character.code == code,
+                    OwnedCard.consumed_at.is_(None),
+                )
+                .order_by(
+                    OwnedCard.np.desc(),
+                    OwnedCard.level.desc(),
+                    OwnedCard.created_at,
+                    OwnedCard.id,
+                )
                 .limit(1)
             )
         if card_id is None:
             raise GameError("🔒 Карточка ещё не получена. Полное изображение скрыто.")
         return await self.card(user, card_id)
 
+    async def copies(self, user, code, page=0):
+        if code not in CARD_IDS or type(page) is not int or page < 0:
+            raise GameError("Карточка не найдена.")
+        async with self.sessions() as session:
+            stmt = (
+                select(OwnedCard)
+                .join(Character, Character.id == OwnedCard.character_id)
+                .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
+                .where(
+                    PlayerRow.telegram_id == user,
+                    Character.code == code,
+                    OwnedCard.consumed_at.is_(None),
+                )
+            )
+            total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
+            page = min(page, max(0, (total - 1) // 8))
+            cards = list(
+                await session.scalars(
+                    stmt.order_by(
+                        OwnedCard.np.desc(),
+                        OwnedCard.level.desc(),
+                        OwnedCard.created_at,
+                        OwnedCard.id,
+                    )
+                    .offset(page * 8)
+                    .limit(8)
+                )
+            )
+            return cards, total, page
+
+    async def level_up(self, user, card_id, steps, key):
+        """Spend coins atomically and once per callback token; locks player before inventory."""
+        if type(steps) is not int or steps not in (1, 10):
+            raise GameError("Повышение доступно на 1 или 10 уровней.")
+        if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{16}", key):
+            raise GameError("Кнопка устарела. Откройте карточку заново.")
+        try:
+            card_id = UUID(str(card_id))
+        except (TypeError, ValueError, AttributeError):
+            raise GameError("Карточка не найдена.") from None
+        op_key = f"level:{key}"
+        async with self.sessions.begin() as session:
+            player, wallet = await self.wallet(session, user)
+            old = await session.scalar(
+                select(CardUpgrade).where(
+                    CardUpgrade.player_id == player.id, CardUpgrade.key == op_key
+                )
+            )
+            if old:
+                if old.target_card_id != card_id or old.steps != steps or old.kind != "level":
+                    raise GameError("Эта операция уже использована.")
+                return False
+            card = await session.scalar(
+                select(OwnedCard)
+                .where(
+                    OwnedCard.id == card_id,
+                    OwnedCard.player_id == player.id,
+                    OwnedCard.consumed_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if card is None:
+                raise GameError("Карточка не найдена.")
+            cost = upgrade_cost(card.level, steps)
+            if wallet.balance < cost:
+                raise GameError(f"Недостаточно монет. Для прокачки нужно {cost}.")
+            card.level += steps
+            wallet.balance -= cost
+            session.add(
+                CardUpgrade(
+                    player_id=player.id,
+                    target_card_id=card.id,
+                    kind="level",
+                    key=op_key,
+                    steps=steps,
+                    coin_cost=cost,
+                )
+            )
+            session.add(
+                CurrencyTransaction(
+                    player_id=player.id,
+                    kind="card_level",
+                    delta=-cost,
+                    balance_after=wallet.balance,
+                    related_id=str(card.id),
+                    key=op_key,
+                )
+            )
+            return True
+
+    async def fuse_np(self, user, card_id, key):
+        """Consume only an unused level-1 NP-1 nonfavorite duplicate; preserve summon history."""
+        if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{16}", key):
+            raise GameError("Кнопка устарела. Откройте карточку заново.")
+        try:
+            card_id = UUID(str(card_id))
+        except (TypeError, ValueError, AttributeError):
+            raise GameError("Карточка не найдена.") from None
+        op_key = f"np:{key}"
+        async with self.sessions.begin() as session:
+            player, _ = await self.wallet(session, user)
+            old = await session.scalar(
+                select(CardUpgrade).where(
+                    CardUpgrade.player_id == player.id, CardUpgrade.key == op_key
+                )
+            )
+            if old:
+                if old.target_card_id != card_id or old.kind != "np":
+                    raise GameError("Эта операция уже использована.")
+                return False
+            target = await session.scalar(
+                select(OwnedCard)
+                .where(
+                    OwnedCard.id == card_id,
+                    OwnedCard.player_id == player.id,
+                    OwnedCard.consumed_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if target is None:
+                raise GameError("Карточка не найдена.")
+            if target.np >= MAX_NP:
+                raise GameError("NP уже максимальный — 5/5.")
+            material = await session.scalar(
+                select(OwnedCard)
+                .where(
+                    OwnedCard.player_id == player.id,
+                    OwnedCard.character_id == target.character_id,
+                    OwnedCard.id != target.id,
+                    OwnedCard.consumed_at.is_(None),
+                    OwnedCard.level == 1,
+                    OwnedCard.np == 1,
+                    OwnedCard.favorite.is_(False),
+                )
+                .order_by(OwnedCard.created_at, OwnedCard.id)
+                .with_for_update()
+                .limit(1)
+            )
+            if material is None:
+                raise GameError(
+                    "Нет подходящего дубликата. Нужна копия того же персонажа "
+                    "с уровнем 1, NP 1 и без отметки «избранное»."
+                )
+            material.consumed_at = datetime.now(UTC)
+            target.np += 1
+            session.add(
+                CardUpgrade(
+                    player_id=player.id,
+                    target_card_id=target.id,
+                    source_card_id=material.id,
+                    kind="np",
+                    key=op_key,
+                    steps=1,
+                    coin_cost=0,
+                )
+            )
+            return True
+
     async def favorite(self, user, card_id, value):
         async with self.sessions.begin() as session:
             result = await session.scalar(
                 select(OwnedCard)
                 .join(PlayerRow, PlayerRow.id == OwnedCard.player_id)
-                .where(PlayerRow.telegram_id == user, OwnedCard.id == UUID(str(card_id)))
+                .where(
+                    PlayerRow.telegram_id == user,
+                    OwnedCard.id == UUID(str(card_id)),
+                    OwnedCard.consumed_at.is_(None),
+                )
                 .with_for_update()
             )
             if not result:

@@ -1,6 +1,90 @@
 [
-  {"id":1001,"code":"AV-F001","slug":"av-f001","name_ru":"Artoria Pendragon","name_en":"Artoria Pendragon","franchise_id":"fate","franchise":"Fate","rarity":"SSR","card_class":"Saber","collection_name":"Fate Collection","image_path":"assets/cards/AV-F001.png","limited":false,"description":"Коллекционная карточка Fate Collection.","tags":{"danbooru":"artoria_pendragon_(fate)","franchise_tag":"fate_(series)"}},
-  {"id":1002,"code":"AV-F002","slug":"av-f002","name_ru":"Morgan le Fae","name_en":"Morgan le Fae","franchise_id":"fate","franchise":"Fate","rarity":"SSR","card_class":"Berserker","collection_name":"Fate Collection","image_path":"assets/cards/AV-F002.png","limited":false,"description":"Коллекционная карточка Fate Collection.","tags":{"danbooru":"morgan_(fate)","franchise_tag":"fate_(series)"}},
-  {"id":1003,"code":"AV-F003","slug":"av-f003","name_ru":"Enkidu","name_en":"Enkidu","franchise_id":"fate","franchise":"Fate","rarity":"SSR","card_class":"Lancer","collection_name":"Fate Collection","image_path":"assets/cards/AV-F003.png","limited":false,"description":"Коллекционная карточка Fate Collection.","tags":{"danbooru":"enkidu_(fate)","franchise_tag":"fate_(series)"}},
-  {"id":1004,"code":"AV-L001","slug":"av-l001","name_ru":"Kama & Ishtar","name_en":"Kama & Ishtar","franchise_id":"fate","franchise":"Fate","rarity":"UR","card_class":"Assassin × Archer","collection_name":"Fate Collection","image_path":"assets/cards/AV-L001.png","limited":true,"description":"Лимитированная двойная карточка — один предмет коллекции.","tags":{"danbooru":"kama_(fate) ishtar_(fate)","franchise_tag":"fate_(series)"}}
+  {
+    "id": 1001,
+    "code": "AV-F001",
+    "slug": "av-f001",
+    "name_ru": "Artoria Pendragon",
+    "name_en": "Artoria Pendragon",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "SSR",
+    "card_class": "Saber",
+    "collection_name": "Fate Collection",
+    "image_path": "assets/cards/AV-F001.png",
+    "limited": false,
+    "description": "Коллекционная карточка Fate Collection.",
+    "tags": {
+      "danbooru": "artoria_pendragon_(fate)",
+      "franchise_tag": "fate_(series)"
+    },
+    "base_hp": 1600,
+    "base_atk": 120,
+    "base_def": 120
+  },
+  {
+    "id": 1002,
+    "code": "AV-F002",
+    "slug": "av-f002",
+    "name_ru": "Morgan le Fae",
+    "name_en": "Morgan le Fae",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "SSR",
+    "card_class": "Berserker",
+    "collection_name": "Fate Collection",
+    "image_path": "assets/cards/AV-F002.png",
+    "limited": false,
+    "description": "Коллекционная карточка Fate Collection.",
+    "tags": {
+      "danbooru": "morgan_(fate)",
+      "franchise_tag": "fate_(series)"
+    },
+    "base_hp": 1250,
+    "base_atk": 165,
+    "base_def": 85
+  },
+  {
+    "id": 1003,
+    "code": "AV-F003",
+    "slug": "av-f003",
+    "name_ru": "Enkidu",
+    "name_en": "Enkidu",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "SSR",
+    "card_class": "Lancer",
+    "collection_name": "Fate Collection",
+    "image_path": "assets/cards/AV-F003.png",
+    "limited": false,
+    "description": "Коллекционная карточка Fate Collection.",
+    "tags": {
+      "danbooru": "enkidu_(fate)",
+      "franchise_tag": "fate_(series)"
+    },
+    "base_hp": 1800,
+    "base_atk": 115,
+    "base_def": 135
+  },
+  {
+    "id": 1004,
+    "code": "AV-L001",
+    "slug": "av-l001",
+    "name_ru": "Kama & Ishtar",
+    "name_en": "Kama & Ishtar",
+    "franchise_id": "fate",
+    "franchise": "Fate",
+    "rarity": "UR",
+    "card_class": "Assassin × Archer",
+    "collection_name": "Fate Collection",
+    "image_path": "assets/cards/AV-L001.png",
+    "limited": true,
+    "description": "Лимитированная двойная карточка — один предмет коллекции.",
+    "tags": {
+      "danbooru": "kama_(fate) ishtar_(fate)",
+      "franchise_tag": "fate_(series)"
+    },
+    "base_hp": 1450,
+    "base_atk": 185,
+    "base_def": 100
+  }
 ]
