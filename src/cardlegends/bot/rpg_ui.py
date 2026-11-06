@@ -2,10 +2,18 @@
 
 from html import escape as h
 
-from cardlegends.bot.game_ui import back, coins, display, keyboard, menu
+from cardlegends.bot.game_ui import back, coins, display, keyboard, menu, send_png
 from cardlegends.domain.activities import ACHIEVEMENTS, progress_bar
 from cardlegends.domain.progression import combat_stats, power
 from cardlegends.domain.tower import battle, enemy_name, enemy_stats
+
+
+def stat_bar(value, maximum, width=12):
+    """Compact Telegram-safe meter for HP/EXP and other bounded stats."""
+    maximum = max(1, int(maximum))
+    value = max(0, min(int(value), maximum))
+    filled = round(width * value / maximum)
+    return f"{'🟩' * filled}{'⬛' * (width - filled)}"
 
 
 class RPGScreens:
@@ -22,16 +30,18 @@ class RPGScreens:
         )
         skipped, steps = await self.game.tutorial(user)
         text = (
-            f"<b>ANIMEVAULT CARDS</b> · Fate\n━━━━━━━━━━━━━━\n"
-            f"{h(p['player'].display_name)} · ранг {p['level']}\n"
-            f"◈ {coins(p['balance'])} Coins   ✦ {coins(p['training_xp'])} EXP\n"
-            f"Коллекция {p['unique']}/4 · Башня {p['highest']}\n"
+            f"<b>✨ ANIMEVAULT CARDS</b>  <i>Fate Collection</i>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 {h(p['player'].display_name)}  ·  Ранг <b>{p['level']}</b>\n"
+            f"🪙 <b>{coins(p['balance'])}</b> Coins     💠 <b>{coins(p['training_xp'])}</b> EXP\n"
+            f"📚 Коллекция <b>{p['unique']}/4</b>     🏰 Этаж <b>{p['highest']}</b>\n"
             f"{progress_bar(p['unique'], 4)}\n\n"
-            f"Награды к получению: <b>{ready}</b>\nВыберите следующий шаг приключения."
+            f"🎁 Доступно наград: <b>{ready}</b>\nВыбери следующий шаг приключения."
         )
         if not skipped and not all(steps):
             text += f"\nПутеводитель: {sum(steps)}/8 — открыт в помощи."
-        await display(event, text, menu())
+        character = await self.game.fate_character("AV-F001")
+        await send_png(event, self.game, character, text, menu())
 
     async def profile(self, event):
         p = await self.game.profile_v2(event.from_user.id)
@@ -46,18 +56,19 @@ class RPGScreens:
         )
         await display(
             event,
-            f"<b>ПРОФИЛЬ ИГРОКА</b>\n━━━━━━━━━━━━━━\n"
-            f"{h(p['player'].display_name)}\nTelegram ID: <code>{event.from_user.id}</code>\n"
-            f"Ранг аккаунта {p['level']} · Всего опыта {coins(p['xp'])}\n"
-            f"{progress_bar(p['xp'] % 100, 100)} {p['xp'] % 100}/100\n"
-            f"До следующего ранга: {100 - p['xp'] % 100}\n"
-            f"EXP для карточек: {coins(p['training_xp'])}\nCoins: {coins(p['balance'])}\n\n"
-            f"Уникальных Fate: {p['unique']}/4 · Экземпляров: {p['total']}\n"
-            f"Всего экземпляров: {p['total_all']} · Уникальных: {p['unique_all']}\n"
-            f"Архивных экземпляров: {p['archived']}\nСильнейшая: {strongest}\n"
-            f"Башня: {p['highest']} · Побед {p['wins']} / Поражений {p['losses']}\n"
-            f"Достижения: {p['achievements']}/{len(ACHIEVEMENTS)}\n"
-            f"С нами с {p['player'].created_at:%d.%m.%Y} UTC",
+            f"<b>👑 ПРОФИЛЬ ИГРОКА</b>\n━━━━━━━━━━━━━━━━━━\n"
+            f"🧑 {h(p['player'].display_name)}  ·  <b>Ранг {p['level']}</b>\n"
+            f"🆔 <code>{event.from_user.id}</code>\n\n"
+            f"<b>Прогресс аккаунта</b>\n{stat_bar(p['xp'] % 100, 100)}  {p['xp'] % 100}/100 EXP\n"
+            f"До нового ранга: <b>{100 - p['xp'] % 100}</b> EXP\n\n"
+            f"🪙 Coins: <b>{coins(p['balance'])}</b>\n💠 EXP карт: <b>{coins(p['training_xp'])}</b>\n"
+            f"📚 Коллекция: <b>{p['unique']}/4</b> героев · {p['total']} экземпляров\n"
+            f"🗃 Архив: {p['archived']} · Всего копий: {p['total_all']}\n\n"
+            f"⚔ <b>Сильнейшая карта</b>\n{strongest}\n\n"
+            f"🏰 Башня: <b>{p['highest']}</b> этаж\n"
+            f"🏆 Победы: {p['wins']}  ·  Поражения: {p['losses']}\n"
+            f"🎖 Достижения: {p['achievements']}/{len(ACHIEVEMENTS)}\n"
+            f"📅 В игре с {p['player'].created_at:%d.%m.%Y} UTC",
             keyboard([[("Коллекция", "r2:inv:0:power:all:all"), ("Мой отряд", "fc:team")], back()]),
         )
 
@@ -306,10 +317,12 @@ class RPGScreens:
     async def activities(self, event):
         await display(
             event,
-            "<b>АКТИВНОСТИ</b>\n━━━━━━━━━━━━━━\n"
-            "Башня — Coins и EXP за каждый бой с победой.\n"
-            "Задания — цели на день и неделю.\nДостижения — награды за ваш путь.\n"
-            "Энергии и таймеров ожидания боя нет.",
+            "<b>🎮 ЦЕНТР АКТИВНОСТЕЙ</b>\n━━━━━━━━━━━━━━━━━━\n"
+            "🏰 <b>Бесконечная башня</b> — сражайся, поднимайся выше и добывай Coins/EXP.\n\n"
+            "📜 <b>Задания</b> — ежедневные и еженедельные цели с гарантированными наградами.\n\n"
+            "🏆 <b>Достижения</b> — долгосрочные испытания и памятные трофеи.\n\n"
+            "📅 <b>Календарь</b> — последовательные бонусы за посещения.\n\n"
+            "⚡ Энергии и ожидания между боями нет — можно играть в своём темпе.",
             keyboard(
                 [
                     [("Бесконечная башня", "fc:tower"), ("Мой отряд", "fc:team")],
@@ -327,9 +340,12 @@ class RPGScreens:
         fighters = [combat_stats(c, card) for _, card, c in members]
         expected = battle(floor, fighters) if fighters else None
         text = (
-            f"<b>БЕСКОНЕЧНАЯ БАШНЯ · {floor}</b>\n━━━━━━━━━━━━━━\n"
-            f"{enemy_name(floor)}\nHP {enemy['hp']} · ATK {enemy['atk']} · DEF {enemy['def']}\n"
-            f"Рекорд: {highest} · Отряд: {len(members)}/3\n"
+            f"<b>🏰 БЕСКОНЕЧНАЯ БАШНЯ</b>  ·  Этаж <b>{floor}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👹 <b>{enemy_name(floor)}</b>\n"
+            f"❤️ HP врага: <b>{coins(enemy['hp'])}</b>\n{stat_bar(enemy['hp'], enemy['hp'])}\n"
+            f"⚔ ATK {coins(enemy['atk'])}   🛡 DEF {coins(enemy['def'])}\n"
+            f"🏆 Рекорд: <b>{highest}</b>   👥 Отряд: <b>{len(members)}/3</b>\n"
             + "\n".join(
                 f"{slot}. {h(c.name_en)} · ур. {card.level} · NP {card.np}"
                 for slot, card, c in members
