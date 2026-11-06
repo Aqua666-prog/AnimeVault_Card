@@ -6,11 +6,14 @@ from uuid import UUID
 from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
+from cardlegends.domain.activities import calendar_bonus, credit
 from cardlegends.domain.fate import BANNER_ID, CARD_IDS, DROP_RATES, draw_fate
 from cardlegends.domain.game import RARITIES, Economy, GameError
-from cardlegends.domain.progression import MAX_NP, combat_stats, upgrade_cost
+from cardlegends.domain.progression import MAX_NP, combat_stats, training_plan, upgrade_cost
 from cardlegends.domain.tower import battle as tower_battle
+from cardlegends.domain.tower import enemy_name, enemy_stats
 from cardlegends.domain.tower import rewards as tower_rewards
+from cardlegends.infrastructure.activities import Activities
 from cardlegends.infrastructure.fate_images import require_card_images
 from cardlegends.infrastructure.game_models import (
     Banner,
@@ -30,7 +33,7 @@ from cardlegends.infrastructure.game_models import (
 from cardlegends.infrastructure.models import PlayerRow
 
 
-class GameService:
+class GameService(Activities):
     def __init__(self, sessions, economy=None, randbelow=None, cooldown_seconds=1, cards_dir=None):
         self.sessions, self.economy = sessions, economy or Economy()
         # One original in flight at a time on the small Dada Cloud worker.
@@ -105,14 +108,46 @@ class GameService:
                 archived=archived,
             )
 
-    async def daily(self, user):
+    async def daily(self, user, telegram_update_id=None):
+        if telegram_update_id is not None and (
+            type(telegram_update_id) is not int or not 0 <= telegram_update_id < 2**63
+        ):
+            raise GameError("Некорректный update.")
         async with self.sessions.begin() as session:
             player, wallet = await self.wallet(session, user)
+            if telegram_update_id is not None:
+                old = await session.scalar(
+                    select(DailyReward).where(
+                        DailyReward.player_id == player.id,
+                        DailyReward.telegram_update_id == telegram_update_id,
+                    )
+                )
+                if old:
+                    transaction = await session.get(CurrencyTransaction, old.transaction_id)
+                    return transaction.balance_after
             # Explicit UTC calendar day, independent of the session timezone.
-            day = await session.scalar(select(func.date(func.timezone("UTC", func.now()))))
+            day = (await self._now(session)).date()
             if await session.get(DailyReward, (player.id, day)):
                 raise GameError("Сегодня награда уже получена. Возвращайтесь завтра по UTC.")
-            wallet.balance += self.economy.daily
+            total = int(
+                await session.scalar(
+                    select(func.count())
+                    .select_from(DailyReward)
+                    .where(DailyReward.player_id == player.id)
+                )
+                or 0
+            )
+            position, extra, experience = calendar_bonus(total)
+            await self._offer(
+                session,
+                player.id,
+                f"calendar:{day}",
+                "calendar",
+                f"Календарь: день {position}",
+                extra,
+                experience,
+            )
+            credit(wallet, self.economy.daily)
             transaction = CurrencyTransaction(
                 player_id=player.id,
                 kind="daily",
@@ -122,7 +157,14 @@ class GameService:
             )
             session.add(transaction)
             await session.flush()
-            session.add(DailyReward(player_id=player.id, day=day, transaction_id=transaction.id))
+            session.add(
+                DailyReward(
+                    player_id=player.id,
+                    day=day,
+                    transaction_id=transaction.id,
+                    telegram_update_id=telegram_update_id,
+                )
+            )
             return wallet.balance
 
     async def summon(self, user, count, key, telegram_update_id=None):
@@ -187,8 +229,7 @@ class GameService:
                 await asyncio.to_thread(require_card_images, self.cards_dir)
             chosen = draw_fate(count, banner.drop_rates, self.randbelow)
             wallet.balance -= cost
-            wallet.xp += count * self.economy.xp_per_card
-            wallet.training_xp += count * self.economy.xp_per_card
+            credit(wallet, xp=count * self.economy.xp_per_card)
             summon = Summon(
                 player_id=player.id,
                 banner_id=BANNER_ID,
@@ -423,7 +464,7 @@ class GameService:
 
     async def level_up(self, user, card_id, steps, key):
         """Spend training EXP once per callback token; locks player before inventory."""
-        if type(steps) is not int or steps not in (1, 10):
+        if type(steps) is not int or steps not in (0, 1, 10):
             raise GameError("Повышение доступно на 1 или 10 уровней.")
         if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{16}", key):
             raise GameError("Кнопка устарела. Откройте карточку заново.")
@@ -431,7 +472,7 @@ class GameService:
             card_id = UUID(str(card_id))
         except (TypeError, ValueError, AttributeError):
             raise GameError("Карточка не найдена.") from None
-        op_key = f"level:{key}"
+        op_key = f"{'max' if steps == 0 else 'level'}:{key}"
         async with self.sessions.begin() as session:
             player, wallet = await self.wallet(session, user)
             old = await session.scalar(
@@ -440,7 +481,11 @@ class GameService:
                 )
             )
             if old:
-                if old.target_card_id != card_id or old.steps != steps or old.kind != "level":
+                if (
+                    old.target_card_id != card_id
+                    or (steps != 0 and old.steps != steps)
+                    or old.kind != "level"
+                ):
                     raise GameError("Эта операция уже использована.")
                 return False
             card = await session.scalar(
@@ -454,7 +499,12 @@ class GameService:
             )
             if card is None:
                 raise GameError("Карточка не найдена.")
-            cost = upgrade_cost(card.level, steps)
+            if steps == 0:
+                steps, cost = training_plan(card.level, wallet.training_xp)
+                if steps == 0:
+                    raise GameError("Недостаточно EXP или уже достигнут уровень 100.")
+            else:
+                cost = upgrade_cost(card.level, steps)
             if wallet.training_xp < cost:
                 raise GameError(f"Недостаточно опыта карт. Для прокачки нужно {cost} EXP.")
             card.level += steps
@@ -768,16 +818,8 @@ class GameService:
             earned_coins, earned_xp = (
                 tower_rewards(floor, first_clear) if outcome.victory else (0, 0)
             )
-            if (
-                wallet.balance + earned_coins > 2**31 - 1
-                or wallet.xp + earned_xp > 2**31 - 1
-                or wallet.training_xp + earned_xp > 2**31 - 1
-            ):
-                raise GameError("Лимит кошелька достигнут. Обратитесь к администратору.")
             if outcome.victory:
-                wallet.balance += earned_coins
-                wallet.xp += earned_xp
-                wallet.training_xp += earned_xp
+                credit(wallet, earned_coins, earned_xp)
                 if first_clear:
                     progress.highest_cleared = floor
             run = TowerRun(
@@ -787,6 +829,23 @@ class GameService:
                 victory=outcome.victory,
                 turns=outcome.turns,
                 remaining_hp=outcome.remaining_hp,
+                first_clear=bool(outcome.victory and first_clear),
+                report={
+                    "enemy": enemy_name(floor),
+                    "stats": enemy_stats(floor),
+                    "team": [
+                        {
+                            "name": c.name_en,
+                            "level": card.level,
+                            "np": card.np,
+                            "stats": combat_stats(c, card),
+                        }
+                        for _, card, c in members
+                    ],
+                    "dealt": outcome.damage_dealt,
+                    "received": outcome.damage_received,
+                    "log": list(outcome.log),
+                },
                 coins=earned_coins,
                 xp=earned_xp,
             )

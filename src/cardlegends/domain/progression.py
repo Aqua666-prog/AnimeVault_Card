@@ -36,3 +36,23 @@ def combat_stats(character, card) -> dict[str, int]:
         "atk": scaled(character.base_atk),
         "def": scaled(character.base_def),
     }
+
+
+def training_plan(level, budget):
+    """Largest affordable upgrade; retains the existing 2*n EXP per transition."""
+    if (
+        type(level) is not int
+        or not 1 <= level <= MAX_LEVEL
+        or type(budget) is not int
+        or budget < 0
+    ):
+        raise GameError("Некорректный план развития.")
+    steps = cost = 0
+    while level + steps < MAX_LEVEL and cost + 2 * (level + steps) <= budget:
+        cost += 2 * (level + steps)
+        steps += 1
+    return steps, cost
+
+
+def power(stats):
+    return stats["hp"] + 5 * stats["atk"] + 3 * stats["def"]
