@@ -47,7 +47,9 @@ def upgrade():
         sa.Column("steps", sa.Integer(), nullable=False),
         sa.Column("coin_cost", sa.Integer(), nullable=False),
         sa.Column("key", sa.String(64), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.UniqueConstraint("player_id", "key", name="uq_card_upgrades_player_key"),
         sa.CheckConstraint("kind IN ('level','np')", name="ck_card_upgrades_kind"),
         sa.CheckConstraint("steps BETWEEN 1 AND 10", name="ck_card_upgrades_steps"),
